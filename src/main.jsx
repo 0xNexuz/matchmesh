@@ -87,6 +87,14 @@ const workflow = [
   "Tip or split costs"
 ];
 
+const demoSteps = [
+  { title: "Create", text: "Open a named room and copy the invite code." },
+  { title: "Join", text: "Paste the invite in another browser as a second fan." },
+  { title: "Sync", text: "Send chat while the pitch and fixture feed stay readable." },
+  { title: "Ask", text: "Run the local assistant for tactical summary or recap." },
+  { title: "Pay", text: "Generate wallet, move funds, tip, and scan the receive QR." }
+];
+
 function formatKickoff(value) {
   if (!value) return "Kickoff TBC";
   return new Intl.DateTimeFormat(undefined, {
@@ -174,6 +182,7 @@ function App() {
   const [localWallet, setLocalWallet] = useState(null);
   const [walletPockets, setWalletPockets] = useState(defaultPockets);
   const [selectedPocket, setSelectedPocket] = useState("spending");
+  const [transferTarget, setTransferTarget] = useState("tips");
   const [sendAmount, setSendAmount] = useState("25.00");
   const [tipRecipient, setTipRecipient] = useState("room-top-commentator");
   const [fixturesState, setFixturesState] = useState({
@@ -198,6 +207,10 @@ function App() {
     };
     return aiRuntimeAnswer || answers[activePrompt];
   }, [activePrompt, aiRuntimeAnswer]);
+
+  const walletTotal = useMemo(() => (
+    walletPockets.reduce((total, pocket) => total + Number(pocket.balance || 0), 0)
+  ), [walletPockets]);
 
   useEffect(() => {
     getRuntimeStatus().then(setRuntimeStatus);
@@ -258,6 +271,12 @@ function App() {
       .catch(() => {});
   }, [roomCode]);
 
+  useEffect(() => {
+    if (selectedPocket === transferTarget) {
+      setTransferTarget(walletPockets.find((pocket) => pocket.id !== selectedPocket)?.id || selectedPocket);
+    }
+  }, [selectedPocket, transferTarget, walletPockets]);
+
   async function handleCreateRoom() {
     return createRoomFromName("Lagos Final Watch");
   }
@@ -313,7 +332,14 @@ function App() {
   async function handleTip(amount = "2.50", recipient = "room-top-commentator") {
     try {
       const result = await sendWalletTip(amount, recipient);
-      setWalletBalance((balance) => Math.max(0, Number((balance - Number(result.amount)).toFixed(2))));
+      const debit = Number(result.amount);
+      if (Number.isFinite(debit)) {
+        savePockets(walletPockets.map((pocket) => (
+          pocket.id === selectedPocket
+            ? { ...pocket, balance: Math.max(0, Number((pocket.balance - debit).toFixed(2))) }
+            : pocket
+        )));
+      }
       if (result.points) setFanPoints(result.points.total);
       setWalletState(`${result.asset} ${result.amount} ${result.status}`);
       await refreshProfile();
@@ -365,8 +391,25 @@ function App() {
         : pocket
     ));
     savePockets(nextPockets);
-    setWalletBalance((balance) => Math.max(0, Number((balance - amount).toFixed(2))));
     setWalletState(`${amount.toFixed(2)} USDT removed from ${walletPockets.find((pocket) => pocket.id === selectedPocket)?.name || "wallet"}`);
+  }
+
+  function handleMoveFunds() {
+    const amount = Number(sendAmount);
+    if (!Number.isFinite(amount) || amount <= 0 || selectedPocket === transferTarget) return;
+    const fromPocket = walletPockets.find((pocket) => pocket.id === selectedPocket);
+    if (!fromPocket || fromPocket.balance < amount) {
+      setWalletState("Not enough funds in selected pocket");
+      return;
+    }
+    const nextPockets = walletPockets.map((pocket) => {
+      if (pocket.id === selectedPocket) return { ...pocket, balance: Number((pocket.balance - amount).toFixed(2)) };
+      if (pocket.id === transferTarget) return { ...pocket, balance: Number((pocket.balance + amount).toFixed(2)) };
+      return pocket;
+    });
+    savePockets(nextPockets);
+    const targetName = nextPockets.find((pocket) => pocket.id === transferTarget)?.name || "target pocket";
+    setWalletState(`${amount.toFixed(2)} USDT moved to ${targetName}`);
   }
 
   async function handleSendMessage() {
@@ -397,6 +440,7 @@ function App() {
         </a>
         <nav aria-label="Main navigation">
           <a href="#product">Product</a>
+          <a href="#demo">Demo</a>
           <a href="#features">Features</a>
           <a href="#stack">Stack</a>
           <a href="#workflow">Workflow</a>
@@ -625,8 +669,8 @@ function App() {
                       <span>Wallet</span>
                     </div>
                     <small>SELF-CUSTODIAL</small>
-                    <strong>{walletBalance.toFixed(2)} <span>USDT</span></strong>
-                    <em>approx ${walletBalance.toFixed(2)}</em>
+                    <strong>{walletTotal.toFixed(2)} <span>USDT</span></strong>
+                    <em>approx ${walletTotal.toFixed(2)}</em>
                     <ShieldCheck className="wallet-mark" size={82} aria-hidden="true" />
                   </div>
 
@@ -709,8 +753,23 @@ function App() {
                     <Radio size={16} /> {walletInfo?.network || "solana"} / {walletInfo?.asset || "USDT"}
                   </div>
 
+                  <label>
+                    Move to
+                    <div className="wallet-field">
+                      <select value={transferTarget} onChange={(event) => setTransferTarget(event.target.value)}>
+                        {walletPockets.filter((pocket) => pocket.id !== selectedPocket).map((pocket) => (
+                          <option key={pocket.id} value={pocket.id}>{pocket.name}</option>
+                        ))}
+                      </select>
+                      <ChevronRight size={16} />
+                    </div>
+                  </label>
+
                   <button className="button primary full" onClick={() => handleTip(sendAmount, tipRecipient)}>
                     <CircleDollarSign size={18} /> Review payment
+                  </button>
+                  <button className="button secondary full" onClick={handleMoveFunds}>
+                    <Wallet size={18} /> Move between pockets
                   </button>
                   <p><KeyRound size={15} /> {walletState}</p>
                 </div>
@@ -820,6 +879,38 @@ function App() {
             ))}
             {!leaderboard.length && <p>No ranked fans yet.</p>}
           </section>
+        </div>
+      </section>
+
+      <section className="demo-section" id="demo">
+        <div className="section-copy">
+          <p className="eyebrow"><Trophy size={16} /> Judge demo</p>
+          <h2>A 90-second path through the whole submission.</h2>
+          <p>
+            This is the intended pitch flow: local-first rooms, low-connectivity fallback,
+            football intelligence, fan points, and USDT-style wallet actions in one loop.
+          </p>
+        </div>
+        <div className="demo-grid">
+          {demoSteps.map((step, index) => (
+            <article key={step.title}>
+              <span>{index + 1}</span>
+              <h3>{step.title}</h3>
+              <p>{step.text}</p>
+            </article>
+          ))}
+        </div>
+        <div className="connectivity-demo">
+          <div>
+            <p className="eyebrow"><WifiOff size={16} /> Low connectivity mode</p>
+            <h3>Rooms keep working when the network gets rough.</h3>
+          </div>
+          <div className="connectivity-rail">
+            <span className={runtimeStatus?.pears?.ready ? "active" : ""}>Room log</span>
+            <span className={runtimeStatus?.pears?.mode === "hyperswarm" ? "active" : ""}>P2P discovery</span>
+            <span className="active">Local assistant</span>
+            <span className="active">Wallet intent queue</span>
+          </div>
         </div>
       </section>
 

@@ -739,6 +739,17 @@ input {
   color: var(--paper);
 }
 
+select {
+  width: 100%;
+  min-height: 48px;
+  border: 0;
+  background: transparent;
+  color: #121d17;
+  font: inherit;
+  font-weight: 850;
+  outline: 0;
+}
+
 .composer button {
   width: 48px;
   padding: 0;
@@ -829,8 +840,10 @@ input {
 }
 
 .wallet-hero-card img {
-  width: 118px;
+  width: 128px;
   height: auto;
+  filter: invert(1) brightness(1.2);
+  opacity: 0.94;
 }
 
 .wallet-hero-card small,
@@ -973,6 +986,7 @@ input {
 }
 
 .wallet-field input,
+.wallet-field select,
 .amount-field input,
 .wallet-management-panel input,
 .send-sheet textarea {
@@ -1217,6 +1231,98 @@ input {
   text-align: right;
 }
 
+.demo-section {
+  padding: 110px 24px;
+  background: linear-gradient(135deg, #101613, #0a231b);
+  color: var(--paper);
+}
+
+.demo-section .section-copy p {
+  color: #bdc8c2;
+}
+
+.demo-grid {
+  max-width: 1180px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.demo-grid article,
+.connectivity-demo {
+  border: 1px solid rgba(247, 244, 236, 0.12);
+  border-radius: var(--radius);
+  background: rgba(247, 244, 236, 0.055);
+  transition: transform 190ms ease, border-color 190ms ease, background 190ms ease;
+}
+
+.demo-grid article {
+  min-height: 190px;
+  padding: 18px;
+}
+
+.demo-grid article:hover,
+.connectivity-demo:hover {
+  transform: translateY(-4px);
+  border-color: rgba(24, 199, 173, 0.45);
+  background: rgba(24, 199, 173, 0.08);
+}
+
+.demo-grid span {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: var(--teal);
+  color: #06211c;
+  font-weight: 950;
+}
+
+.demo-grid h3 {
+  margin: 34px 0 8px;
+}
+
+.demo-grid p,
+.connectivity-demo p {
+  color: #c6d1cb;
+}
+
+.connectivity-demo {
+  max-width: 1180px;
+  margin: 18px auto 0;
+  padding: 22px;
+  display: grid;
+  grid-template-columns: 0.8fr 1.2fr;
+  gap: 18px;
+  align-items: center;
+}
+
+.connectivity-rail {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.connectivity-rail span {
+  min-height: 54px;
+  display: grid;
+  place-items: center;
+  padding: 0 10px;
+  border: 1px solid rgba(247, 244, 236, 0.12);
+  border-radius: 999px;
+  color: #aebbb4;
+  font-weight: 850;
+  text-align: center;
+}
+
+.connectivity-rail span.active {
+  border-color: rgba(24, 199, 173, 0.5);
+  background: rgba(24, 199, 173, 0.12);
+  color: var(--paper);
+}
+
 .feature-grid,
 .stack-grid {
   max-width: 1180px;
@@ -1369,6 +1475,8 @@ li::before {
   .stack-grid,
   .fixtures-list,
   .activity-grid,
+  .demo-grid,
+  .connectivity-demo,
   .workflow {
     grid-template-columns: 1fr;
   }
@@ -1391,6 +1499,10 @@ li::before {
 
   .wallet-hero-card {
     grid-column: 1 / -1;
+  }
+
+  .connectivity-rail {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
@@ -1423,6 +1535,7 @@ li::before {
 
   .product-section,
   .features,
+  .demo-section,
   .stack-section,
   .workflow,
   .final-cta {
@@ -1468,6 +1581,10 @@ li::before {
 
   .amount-field input {
     font-size: 1.6rem;
+  }
+
+  .connectivity-rail {
+    grid-template-columns: 1fr;
   }
 
   .player {
