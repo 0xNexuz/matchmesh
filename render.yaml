@@ -9,7 +9,7 @@ services:
       - key: PORT
         value: 4173
       - key: MATCHMESH_DATA_DIR
-        value: /var/data/matchmesh
+        value: /tmp/matchmesh
       - key: MATCHMESH_ENABLE_P2P
         value: "0"
       - key: MATCHMESH_WALLET_CHAIN
@@ -26,7 +26,3 @@ services:
         sync: false
       - key: FOOTBALL_DATA_TOKEN
         sync: false
-    disk:
-      name: matchmesh-data
-      mountPath: /var/data
-      sizeGB: 1
