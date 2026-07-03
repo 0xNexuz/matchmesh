@@ -665,7 +665,8 @@ function App() {
                 <div className="wallet-stack">
                   <div className="wallet-hero-card">
                     <div>
-                      <img src={logo} alt="MatchMesh" />
+                      <span className="wallet-brand-mark" aria-hidden="true">M</span>
+                      <b>MatchMesh</b>
                       <span>Wallet</span>
                     </div>
                     <small>SELF-CUSTODIAL</small>

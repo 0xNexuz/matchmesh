@@ -835,15 +835,29 @@ select {
 .wallet-hero-card > div {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+  gap: 10px;
 }
 
-.wallet-hero-card img {
-  width: 128px;
-  height: auto;
-  filter: invert(1) brightness(1.2);
-  opacity: 0.94;
+.wallet-hero-card > div > span:last-child {
+  margin-left: auto;
+}
+
+.wallet-brand-mark {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(247, 244, 236, 0.2);
+  border-radius: 10px;
+  background: rgba(247, 244, 236, 0.08);
+  color: var(--teal);
+  font-size: 1rem;
+  font-weight: 950;
+}
+
+.wallet-hero-card b {
+  color: var(--paper);
+  font-size: 1rem;
 }
 
 .wallet-hero-card small,
