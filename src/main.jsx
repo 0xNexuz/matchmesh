@@ -84,6 +84,21 @@ const workflow = [
   "Tip or split costs"
 ];
 
+const fieldPlayers = [
+  { id: "kudus", name: "Kudus", number: 20, team: "GHA", x: 22, y: 30, action: "Carrying", status: "on-ball" },
+  { id: "partey", name: "Partey", number: 5, team: "GHA", x: 46, y: 55, action: "Switch option", status: "support" },
+  { id: "saka", name: "Saka", number: 7, team: "ENG", x: 67, y: 36, action: "Pressing", status: "press" },
+  { id: "walker", name: "Walker", number: 2, team: "ENG", x: 80, y: 66, action: "Cover run", status: "tracking" },
+  { id: "williams", name: "Williams", number: 9, team: "GHA", x: 58, y: 22, action: "Runs channel", status: "attack" },
+  { id: "rice", name: "Rice", number: 4, team: "ENG", x: 52, y: 48, action: "Screens pass", status: "press" }
+];
+
+const fieldActions = [
+  { minute: "68:21", player: "Kudus", text: "Carry into right half-space" },
+  { minute: "68:25", player: "Saka", text: "Closes touchline lane" },
+  { minute: "68:29", player: "Partey", text: "Available for switch" }
+];
+
 function formatKickoff(value) {
   if (!value) return "Kickoff TBC";
   return new Intl.DateTimeFormat(undefined, {
@@ -415,11 +430,32 @@ function App() {
                 <span>68'</span>
                 <strong>1 - 1</strong>
               </div>
-              <div className="pitch">
-                <span className="player p1" />
-                <span className="player p2" />
-                <span className="player p3" />
-                <span className="player p4" />
+              <div className="pitch" aria-label="Live tactical field view">
+                <div className="ball-trail" aria-hidden="true" />
+                {fieldPlayers.map((player) => (
+                  <button
+                    key={player.id}
+                    className={`player ${player.team.toLowerCase()} ${player.status}`}
+                    style={{ left: `${player.x}%`, top: `${player.y}%` }}
+                    aria-label={`${player.name}, ${player.team}, ${player.action}`}
+                  >
+                    <span>{player.number}</span>
+                    <strong>{player.name}</strong>
+                    <em>{player.action}</em>
+                  </button>
+                ))}
+                <div className="field-action-board" aria-label="Current player actions">
+                  <div>
+                    <strong>Live actions</strong>
+                    <span>provider-ready</span>
+                  </div>
+                  {fieldActions.map((action) => (
+                    <article key={`${action.minute}-${action.player}`}>
+                      <time>{action.minute}</time>
+                      <p><b>{action.player}</b> {action.text}</p>
+                    </article>
+                  ))}
+                </div>
               </div>
               <div className="room-stats">
                 <span><Network size={15} /> {runtimeStatus?.pears?.mode || "runtime"}</span>
