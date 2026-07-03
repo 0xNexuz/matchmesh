@@ -74,6 +74,13 @@ export function getFanProfile() {
   return request(`/api/profile?memberId=${encodeURIComponent(getMemberId())}`);
 }
 
+export function updateFanProfile(profile) {
+  return request("/api/profile", {
+    method: "PATCH",
+    body: JSON.stringify({ ...profile, memberId: getMemberId() })
+  });
+}
+
 export function getLeaderboard() {
   return request("/api/leaderboard");
 }
@@ -119,5 +126,12 @@ export function sendWalletTip(amount, recipient) {
   return request("/api/wallet/tip", {
     method: "POST",
     body: JSON.stringify({ amount, recipient, memberId: getMemberId() })
+  });
+}
+
+export function sendWalletTransfer(amount, recipient, note) {
+  return request("/api/wallet/transfer", {
+    method: "POST",
+    body: JSON.stringify({ amount, recipient, note, memberId: getMemberId() })
   });
 }

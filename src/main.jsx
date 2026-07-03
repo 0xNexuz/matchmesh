@@ -7,17 +7,20 @@ import {
   ChevronRight,
   CircleDollarSign,
   Copy,
+  ExternalLink,
   Info,
   KeyRound,
   Lock,
   MessageSquare,
   Network,
+  Plus,
   Radio,
   Send,
   ShieldCheck,
   Sparkles,
   Star,
   Trophy,
+  User,
   Users,
   Wallet,
   WifiOff
@@ -39,7 +42,9 @@ import {
   joinRoom,
   requestAiCompletion,
   sendChatMessage,
+  sendWalletTransfer,
   sendWalletTip,
+  updateFanProfile,
   updateRoom
 } from "./runtimeClient";
 import "./styles.css";
@@ -87,7 +92,7 @@ const workflow = [
   "Tip or split costs"
 ];
 
-const demoSteps = [
+const appFlowSteps = [
   { title: "Create", text: "Open a named room and copy the invite code." },
   { title: "Join", text: "Paste the invite in another browser as a second fan." },
   { title: "Sync", text: "Send chat while the pitch and fixture feed stay readable." },
@@ -130,10 +135,14 @@ const walletWords = [
 ];
 
 const defaultPockets = [
-  { id: "spending", name: "Spending", balance: 250, icon: CircleDollarSign },
-  { id: "pool", name: "Watch Party Pool", balance: 450, icon: Users },
-  { id: "tips", name: "Creator Tips", balance: 300.75, icon: Star }
+  { id: "spending", name: "Spending", balance: 128.4, icon: CircleDollarSign }
 ];
+
+function pocketIcon(id) {
+  if (id === "pool") return Users;
+  if (id === "tips") return Star;
+  return CircleDollarSign;
+}
 
 function generateLocalWallet() {
   const bytes = new Uint8Array(16);
@@ -166,23 +175,25 @@ function App() {
   const [walletState, setWalletState] = useState("Ready for wallet policy check");
   const [roomState, setRoomState] = useState("Room log ready");
   const [roomMessages, setRoomMessages] = useState(initialMessages);
-  const [walletBalance, setWalletBalance] = useState(128.4);
   const [joinedRooms, setJoinedRooms] = useState([]);
   const [joinCode, setJoinCode] = useState("");
   const [fanPoints, setFanPoints] = useState(0);
   const [pointEvents, setPointEvents] = useState([]);
   const [leaderboard, setLeaderboard] = useState([]);
+  const [userProfile, setUserProfile] = useState({ memberId: getMemberId(), displayName: "Local fan" });
   const [recentTips, setRecentTips] = useState([]);
   const [walletInfo, setWalletInfo] = useState(null);
   const [receiveQr, setReceiveQr] = useState("");
   const [walletExport, setWalletExport] = useState(null);
   const [importPhrase, setImportPhrase] = useState("");
   const [walletManageOpen, setWalletManageOpen] = useState(false);
+  const [walletManageMode, setWalletManageMode] = useState("");
   const [revealKeys, setRevealKeys] = useState(false);
   const [localWallet, setLocalWallet] = useState(null);
   const [walletPockets, setWalletPockets] = useState(defaultPockets);
   const [selectedPocket, setSelectedPocket] = useState("spending");
-  const [transferTarget, setTransferTarget] = useState("tips");
+  const [transferTarget, setTransferTarget] = useState("spending");
+  const [newPocketName, setNewPocketName] = useState("");
   const [sendAmount, setSendAmount] = useState("25.00");
   const [tipRecipient, setTipRecipient] = useState("room-top-commentator");
   const [fixturesState, setFixturesState] = useState({
@@ -212,15 +223,19 @@ function App() {
     walletPockets.reduce((total, pocket) => total + Number(pocket.balance || 0), 0)
   ), [walletPockets]);
 
+  const topCommentator = useMemo(() => leaderboard[0]?.memberId || "room-top-commentator", [leaderboard]);
+
   useEffect(() => {
+    const roomFromUrl = extractInviteCode(new URLSearchParams(window.location.search).get("room"));
+    if (roomFromUrl) setJoinCode(roomFromUrl);
     getRuntimeStatus().then(setRuntimeStatus);
     const savedWallet = storedJson("matchmesh-wallet", null);
     const savedPockets = storedJson("matchmesh-wallet-pockets", defaultPockets.map(({ icon, ...pocket }) => pocket));
     if (savedWallet) setLocalWallet(savedWallet);
-    setWalletPockets(savedPockets.map((pocket) => ({
+    setWalletPockets(savedPockets.length ? savedPockets.map((pocket) => ({
       ...pocket,
-      icon: defaultPockets.find((item) => item.id === pocket.id)?.icon || CircleDollarSign
-    })));
+      icon: pocketIcon(pocket.id)
+    })) : defaultPockets);
     getFixtures()
       .then(setFixturesState)
       .catch(() => {
@@ -252,6 +267,7 @@ function App() {
   async function refreshProfile() {
     try {
       const profile = await getFanProfile();
+      setUserProfile(profile);
       setJoinedRooms(profile.rooms || []);
       setFanPoints(profile.points || 0);
       setPointEvents(profile.pointEvents || []);
@@ -283,13 +299,17 @@ function App() {
     const timer = window.setInterval(() => {
       refreshProfile();
       getMatchState().then(setMatchState).catch(() => {});
+      getWalletStatus().then(setWalletInfo).catch(() => {});
     }, 15000);
     return () => window.clearInterval(timer);
   }, []);
 
   useEffect(() => {
-    if (selectedPocket === transferTarget) {
-      setTransferTarget(walletPockets.find((pocket) => pocket.id !== selectedPocket)?.id || selectedPocket);
+    const availableTarget = walletPockets.find((pocket) => pocket.id !== selectedPocket);
+    if (!availableTarget) {
+      setTransferTarget("");
+    } else if (selectedPocket === transferTarget || !walletPockets.some((pocket) => pocket.id === transferTarget)) {
+      setTransferTarget(availableTarget.id);
     }
   }, [selectedPocket, transferTarget, walletPockets]);
 
@@ -357,7 +377,26 @@ function App() {
         )));
       }
       if (result.points) setFanPoints(result.points.total);
-      setWalletState(`${result.asset} ${result.amount} ${result.status}`);
+      setWalletState(`${result.amount} ${result.asset} ${result.status}`);
+      await refreshProfile();
+    } catch (error) {
+      setWalletState(error.payload?.error || error.message);
+    }
+  }
+
+  async function handleWalletTransfer() {
+    try {
+      const result = await sendWalletTransfer(sendAmount, tipRecipient, "MatchMesh wallet payment");
+      const debit = Number(result.amount);
+      if (Number.isFinite(debit)) {
+        savePockets(walletPockets.map((pocket) => (
+          pocket.id === selectedPocket
+            ? { ...pocket, balance: Math.max(0, Number((pocket.balance - debit).toFixed(2))) }
+            : pocket
+        )));
+      }
+      if (result.points) setFanPoints(result.points.total);
+      setWalletState(result.txHash ? `Sent on-chain: ${result.txHash.slice(0, 10)}...` : `${result.amount} ${result.asset} ${result.status}`);
       await refreshProfile();
     } catch (error) {
       setWalletState(error.payload?.error || error.message);
@@ -387,6 +426,7 @@ function App() {
     setLocalWallet(wallet);
     setRevealKeys(false);
     setWalletState("Local wallet generated and saved on this device");
+    updateFanProfile({ walletAddress: wallet.address }).then(setUserProfile).catch(() => {});
   }
 
   function handleRotateWallet() {
@@ -412,7 +452,7 @@ function App() {
 
   function handleMoveFunds() {
     const amount = Number(sendAmount);
-    if (!Number.isFinite(amount) || amount <= 0 || selectedPocket === transferTarget) return;
+    if (!Number.isFinite(amount) || amount <= 0 || selectedPocket === transferTarget || !transferTarget) return;
     const fromPocket = walletPockets.find((pocket) => pocket.id === selectedPocket);
     if (!fromPocket || fromPocket.balance < amount) {
       setWalletState("Not enough funds in selected pocket");
@@ -426,6 +466,23 @@ function App() {
     savePockets(nextPockets);
     const targetName = nextPockets.find((pocket) => pocket.id === transferTarget)?.name || "target pocket";
     setWalletState(`${amount.toFixed(2)} USDT moved to ${targetName}`);
+  }
+
+  function handleAddPocket() {
+    const name = newPocketName.trim();
+    if (!name) return;
+    const id = `pocket-${crypto.randomUUID().slice(0, 6)}`;
+    const nextPockets = [...walletPockets, { id, name: name.slice(0, 28), balance: 0, icon: CircleDollarSign }];
+    savePockets(nextPockets);
+    setSelectedPocket(id);
+    setNewPocketName("");
+    setWalletState(`${name.slice(0, 28)} pocket added`);
+  }
+
+  function copyInvite() {
+    const url = `${window.location.origin}${window.location.pathname}?room=${roomCode}`;
+    navigator.clipboard?.writeText(`${roomCode} ${url}`).catch(() => {});
+    setRoomState(`${roomCode} invite copied`);
   }
 
   async function handleSendMessage() {
@@ -456,9 +513,10 @@ function App() {
         </a>
         <nav aria-label="Main navigation">
           <a href="#product">Product</a>
-          <a href="#demo">Demo</a>
+          <a href="#app-flow">App flow</a>
           <a href="#features">Features</a>
           <a href="#stack">Stack</a>
+          <a href="/build.html">Build doc</a>
           <a href="#workflow">Workflow</a>
         </nav>
         <a className="nav-cta" href="#product">Open room</a>
@@ -499,6 +557,14 @@ function App() {
               <h3>Join multiple rooms and keep your matchday points.</h3>
             </div>
             <strong>{fanPoints} pts</strong>
+          </div>
+          <div className="profile-strip">
+            <div>
+              <User size={18} />
+              <span>{userProfile.displayName || userProfile.memberId}</span>
+              <small>{userProfile.memberId}</small>
+            </div>
+            <button onClick={copyInvite}><Copy size={16} /> Copy invite link</button>
           </div>
           <div className="room-chips">
             {joinedRooms.map((room) => (
@@ -588,7 +654,7 @@ function App() {
               />
               <button onClick={handleRenameRoom}>Rename</button>
             </div>
-            <button onClick={handleCreateRoom}><Copy size={16} /> {roomCode}</button>
+            <button onClick={copyInvite}><Copy size={16} /> {roomCode}</button>
           </div>
 
           <div className="room-layout">
@@ -712,6 +778,18 @@ function App() {
                       </button>
                     );
                   })}
+                  <div className="add-pocket">
+                    <input
+                      value={newPocketName}
+                      onChange={(event) => setNewPocketName(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") handleAddPocket();
+                      }}
+                      placeholder="Add purpose pocket"
+                      aria-label="New wallet pocket name"
+                    />
+                    <button onClick={handleAddPocket} aria-label="Add wallet pocket"><Plus size={18} /></button>
+                  </div>
                 </div>
 
                 <div className="send-sheet" aria-label="Send USDT">
@@ -739,6 +817,9 @@ function App() {
                       <Copy size={16} />
                     </div>
                   </label>
+                  <button className="recipient-shortcut" onClick={() => setTipRecipient(`${topCommentator}-wallet`)}>
+                    <Star size={15} /> Top room commentator
+                  </button>
 
                   <label>
                     Amount
@@ -775,23 +856,30 @@ function App() {
                     <Radio size={16} /> {walletInfo?.network || "solana"} / {walletInfo?.asset || "USDT"}
                   </div>
 
-                  <label>
-                    Move to
-                    <div className="wallet-field">
-                      <select value={transferTarget} onChange={(event) => setTransferTarget(event.target.value)}>
-                        {walletPockets.filter((pocket) => pocket.id !== selectedPocket).map((pocket) => (
-                          <option key={pocket.id} value={pocket.id}>{pocket.name}</option>
-                        ))}
-                      </select>
-                      <ChevronRight size={16} />
-                    </div>
-                  </label>
+                  {walletPockets.length > 1 && (
+                    <label>
+                      Move to
+                      <div className="wallet-field">
+                        <select value={transferTarget} onChange={(event) => setTransferTarget(event.target.value)}>
+                          {walletPockets.filter((pocket) => pocket.id !== selectedPocket).map((pocket) => (
+                            <option key={pocket.id} value={pocket.id}>{pocket.name}</option>
+                          ))}
+                        </select>
+                        <ChevronRight size={16} />
+                      </div>
+                    </label>
+                  )}
 
-                  <button className="button primary full" onClick={() => handleTip(sendAmount, tipRecipient)}>
-                    <CircleDollarSign size={18} /> Review payment
+                  <button className="button primary full" onClick={handleWalletTransfer}>
+                    <CircleDollarSign size={18} /> Send payment
                   </button>
-                  <button className="button secondary full" onClick={handleMoveFunds}>
-                    <Wallet size={18} /> Move between pockets
+                  {walletPockets.length > 1 && (
+                    <button className="button secondary full" onClick={handleMoveFunds}>
+                      <Wallet size={18} /> Move between pockets
+                    </button>
+                  )}
+                  <button className="button secondary full" onClick={() => handleTip(sendAmount, `${topCommentator}-wallet`)}>
+                    <Star size={18} /> Tip top commentator
                   </button>
                   <p><KeyRound size={15} /> {walletState}</p>
                 </div>
@@ -836,32 +924,50 @@ function App() {
                     onClick={() => setWalletManageOpen((open) => !open)}
                     aria-expanded={walletManageOpen}
                   >
-                    <KeyRound size={16} /> Wallet management
+                    <KeyRound size={16} /> Recovery & keys
                   </button>
                   {walletManageOpen && (
                     <div className="wallet-management-panel">
-                      <div className="wallet-actions">
-                        <button onClick={handleGenerateWallet}>Generate wallet</button>
-                        <button onClick={() => setRevealKeys((value) => !value)}>Show keys</button>
-                        <button onClick={handleRemoveFunds}>Remove funds</button>
-                        <button onClick={handleRotateWallet}>Rotate wallet</button>
+                      <div className="wallet-actions compact">
+                        <button onClick={handleGenerateWallet}>Create wallet</button>
+                        <button onClick={() => setWalletManageMode(walletManageMode === "backup" ? "" : "backup")}>Backup</button>
+                        <button onClick={() => setWalletManageMode(walletManageMode === "import" ? "" : "import")}>Import</button>
+                        <button onClick={() => setWalletManageMode(walletManageMode === "advanced" ? "" : "advanced")}>Advanced</button>
                       </div>
                       <div className="wallet-key-card">
                         <span>Saved wallet</span>
                         <code>{localWallet?.address || "No local wallet generated yet"}</code>
-                        {revealKeys && localWallet?.recoveryPhrase && <p>{localWallet.recoveryPhrase}</p>}
+                        {walletInfo?.accountAddress && <small>Native account: {walletInfo.accountAddress}</small>}
                       </div>
-                      <input
-                        value={importPhrase}
-                        onChange={(event) => setImportPhrase(event.target.value)}
-                        placeholder="Paste recovery phrase"
-                        aria-label="Recovery phrase"
-                      />
-                      <div className="wallet-actions compact">
-                        <button onClick={async () => setWalletExport(await exportWallet())}>Server export</button>
-                        <button onClick={async () => setWalletState((await importWallet(importPhrase)).status)}>Import phrase</button>
-                      </div>
-                      {walletExport?.recoveryPhrase && <small>Recovery phrase ready. Keep it private.</small>}
+                      {walletManageMode === "backup" && (
+                        <div className="wallet-key-card sensitive">
+                          <button onClick={() => setRevealKeys((value) => !value)}>
+                            {revealKeys ? "Hide phrase" : "Reveal phrase"}
+                          </button>
+                          {revealKeys && localWallet?.recoveryPhrase && <p>{localWallet.recoveryPhrase}</p>}
+                          {!localWallet?.recoveryPhrase && <small>Create a wallet first to back it up.</small>}
+                        </div>
+                      )}
+                      {walletManageMode === "import" && (
+                        <div className="wallet-import">
+                          <input
+                            value={importPhrase}
+                            onChange={(event) => setImportPhrase(event.target.value)}
+                            placeholder="Paste recovery phrase"
+                            aria-label="Recovery phrase"
+                          />
+                          <button onClick={async () => setWalletState((await importWallet(importPhrase)).status)}>Import phrase</button>
+                        </div>
+                      )}
+                      {walletManageMode === "advanced" && (
+                        <div className="wallet-actions compact">
+                          <button onClick={handleRemoveFunds}>Remove funds</button>
+                          <button onClick={handleRotateWallet}>Rotate wallet</button>
+                          <button onClick={async () => setWalletExport(await exportWallet())}>Server export</button>
+                          <button onClick={() => getWalletStatus().then(setWalletInfo).catch(() => {})}>Refresh wallet</button>
+                        </div>
+                      )}
+                      {walletExport?.recoveryPhrase && <small>Server export returned a phrase. Keep it private and clear it after backup.</small>}
                     </div>
                   )}
                 </div>
@@ -904,17 +1010,20 @@ function App() {
         </div>
       </section>
 
-      <section className="demo-section" id="demo">
+      <section className="demo-section" id="app-flow">
         <div className="section-copy">
-          <p className="eyebrow"><Trophy size={16} /> Judge demo</p>
-          <h2>A 90-second path through the whole submission.</h2>
+          <p className="eyebrow"><Trophy size={16} /> App flow iteration</p>
+          <h2>A clean path through the whole matchday loop.</h2>
           <p>
-            This is the intended pitch flow: local-first rooms, low-connectivity fallback,
-            football intelligence, fan points, and USDT-style wallet actions in one loop.
+            Create a room, bring another fan in, read the live match, earn points,
+            send a payment, and receive funds from the same wallet surface.
           </p>
+          <a className="button secondary" href="/build.html">
+            Open build doc <ExternalLink size={16} />
+          </a>
         </div>
         <div className="demo-grid">
-          {demoSteps.map((step, index) => (
+          {appFlowSteps.map((step, index) => (
             <article key={step.title}>
               <span>{index + 1}</span>
               <h3>{step.title}</h3>
@@ -931,7 +1040,7 @@ function App() {
             <span className={runtimeStatus?.pears?.ready ? "active" : ""}>Room log</span>
             <span className={runtimeStatus?.pears?.mode === "hyperswarm" ? "active" : ""}>P2P discovery</span>
             <span className="active">Local assistant</span>
-            <span className="active">Wallet intent queue</span>
+            <span className="active">Wallet receipts</span>
           </div>
         </div>
       </section>

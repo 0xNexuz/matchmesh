@@ -42,6 +42,7 @@ const runtime = {
   messages: new Map(),
   memberships: new Map(),
   points: new Map(),
+  profiles: new Map(),
   walletLedger: [],
   rateLimits: new Map(),
   fixturesCache: { expiresAt: 0, payload: null },
@@ -66,6 +67,7 @@ async function loadState() {
     runtime.messages = new Map(snapshot.messages || []);
     runtime.memberships = new Map((snapshot.memberships || []).map(([id, rooms]) => [id, new Set(rooms)]));
     runtime.points = new Map(snapshot.points || []);
+    runtime.profiles = new Map(snapshot.profiles || []);
     runtime.walletLedger = snapshot.walletLedger || [];
   } catch {}
 }
@@ -76,6 +78,7 @@ async function saveState() {
     messages: [...runtime.messages.entries()],
     memberships: [...runtime.memberships.entries()].map(([id, rooms]) => [id, [...rooms]]),
     points: [...runtime.points.entries()],
+    profiles: [...runtime.profiles.entries()],
     walletLedger: runtime.walletLedger.slice(-100)
   };
   await writeFile(stateFile, JSON.stringify(snapshot, null, 2)).catch(() => {});
@@ -268,10 +271,24 @@ function awardPoints(memberId, amount, reason) {
   return { total: profile.total, event, events: profile.events.slice(-20) };
 }
 
+function profileFor(memberId) {
+  const id = memberIdFrom(memberId);
+  const profile = runtime.profiles.get(id) || {
+    memberId: id,
+    displayName: id.replace(/^fan-/u, "Fan "),
+    walletAddress: null,
+    createdAt: new Date().toISOString()
+  };
+  runtime.profiles.set(id, profile);
+  return profile;
+}
+
 function fanProfile(memberId) {
   const id = memberIdFrom(memberId);
   const points = runtime.points.get(id) || { total: 0, events: [] };
+  const profile = profileFor(id);
   return {
+    ...profile,
     memberId: id,
     points: points.total,
     pointEvents: points.events.slice(-20),
@@ -309,6 +326,82 @@ async function walletStatusPayload() {
     accountAddress,
     receiveTarget
   };
+}
+
+async function tryNativeWalletTransfer({ recipient, amount }) {
+  const walletChain = process.env.MATCHMESH_WALLET_CHAIN?.trim() || "solana";
+  const token = process.env.MATCHMESH_USDT_MINT || process.env.MATCHMESH_TOKEN_MINT;
+  if (!runtime.wdk) return { status: "recorded-policy-ledger", accountAddress: null };
+  const account = await runtime.wdk.getAccount(walletChain, 0);
+  const accountAddress = await account.getAddress();
+  if (!token || !/^[1-9A-HJ-NP-Za-km-z]{32,44}$/u.test(recipient)) {
+    const signature = typeof account.sign === "function"
+      ? await account.sign(`MatchMesh transfer receipt: ${amount.toFixed(2)} USDt to ${recipient}`)
+      : null;
+    return {
+      status: "signed-wallet-receipt",
+      accountAddress,
+      signature,
+      note: "Set MATCHMESH_USDT_MINT and use a valid Solana address for on-chain token transfer."
+    };
+  }
+  const decimals = Number(process.env.MATCHMESH_USDT_DECIMALS || 6);
+  const units = BigInt(Math.round(amount * 10 ** decimals));
+  const result = await account.transfer({ token, recipient, amount: units });
+  return {
+    status: "submitted-on-chain",
+    accountAddress,
+    txHash: result.hash,
+    fee: result.fee?.toString?.() || result.fee
+  };
+}
+
+async function createWalletTransfer(body, intent = "transfer") {
+  if (!runtime.wdkStatus?.ready) {
+    const error = new Error("WDK wallet is not configured");
+    error.status = 503;
+    throw error;
+  }
+  const amount = Number(body.amount);
+  const recipient = text(body.recipient).slice(0, 120);
+  const memberId = memberIdFrom(body.memberId);
+  if (!Number.isFinite(amount) || amount <= 0 || amount > 100) {
+    const error = new Error("Transfer amount must be between 0 and 100 USDt");
+    error.status = 400;
+    throw error;
+  }
+  if (!recipient) {
+    const error = new Error("Recipient is required");
+    error.status = 400;
+    throw error;
+  }
+  let execution;
+  try {
+    execution = await tryNativeWalletTransfer({ recipient, amount });
+  } catch (error) {
+    execution = {
+      status: "wallet-execution-pending",
+      accountAddress: await walletAccountAddress().catch(() => null),
+      note: error.message
+    };
+  }
+  const entry = {
+    id: `${intent}_${randomBytes(8).toString("hex")}`,
+    intent,
+    amount: amount.toFixed(2),
+    recipient,
+    asset: "USDt",
+    status: execution.status,
+    accountAddress: execution.accountAddress || null,
+    txHash: execution.txHash || null,
+    signature: execution.signature || null,
+    note: execution.note || text(body.note).slice(0, 120),
+    createdAt: new Date().toISOString()
+  };
+  runtime.walletLedger.push(entry);
+  const points = awardPoints(memberId, intent === "tip" ? 3 : 2, intent === "tip" ? "Sent a creator tip" : "Sent a wallet transfer");
+  await saveState();
+  return { ...entry, points, ledgerSize: runtime.walletLedger.length };
 }
 
 function assistantAnswer(prompt, context = {}) {
@@ -779,6 +872,19 @@ async function handleApi(request, response, pathname) {
     return json(response, 200, fanProfile(url.searchParams.get("memberId")));
   }
 
+  if (pathname === "/api/profile" && request.method === "PATCH") {
+    const body = await readBody(request);
+    const profile = profileFor(body.memberId);
+    const displayName = text(body.displayName).slice(0, 48);
+    const walletAddress = text(body.walletAddress).slice(0, 120);
+    if (displayName) profile.displayName = displayName;
+    if (walletAddress) profile.walletAddress = walletAddress;
+    profile.updatedAt = new Date().toISOString();
+    runtime.profiles.set(profile.memberId, profile);
+    await saveState();
+    return json(response, 200, fanProfile(profile.memberId));
+  }
+
   if (pathname === "/api/leaderboard" && request.method === "GET") {
     return json(response, 200, { leaderboard: leaderboard() });
   }
@@ -933,39 +1039,19 @@ async function handleApi(request, response, pathname) {
   }
 
   if (pathname === "/api/wallet/tip" && request.method === "POST") {
-    const body = await readBody(request);
-    if (!runtime.wdkStatus?.ready) {
-      return json(response, 503, {
-        error: "WDK wallet is not configured",
-        status: runtime.wdkStatus
-      });
+    try {
+      return json(response, 202, await createWalletTransfer(await readBody(request), "tip"));
+    } catch (error) {
+      return json(response, error.status || 500, { error: error.message });
     }
-    const amount = Number(body.amount);
-    const recipient = text(body.recipient).slice(0, 80);
-    const memberId = memberIdFrom(body.memberId);
-    if (!Number.isFinite(amount) || amount <= 0 || amount > 100) {
-      return json(response, 400, { error: "Tip amount must be between 0 and 100 USDt" });
+  }
+
+  if (pathname === "/api/wallet/transfer" && request.method === "POST") {
+    try {
+      return json(response, 202, await createWalletTransfer(await readBody(request), "transfer"));
+    } catch (error) {
+      return json(response, error.status || 500, { error: error.message });
     }
-    if (!recipient) return json(response, 400, { error: "Recipient is required" });
-    const accountAddress = await walletAccountAddress().catch(() => null);
-    const intent = {
-      id: `tip_${randomBytes(8).toString("hex")}`,
-      intent: "tip",
-      amount: amount.toFixed(2),
-      recipient,
-      asset: "USDt",
-      status: accountAddress ? "wallet-account-ready" : runtime.wdk ? "policy-check-required" : "recorded-policy-ledger",
-      accountAddress,
-      createdAt: new Date().toISOString()
-    };
-    runtime.walletLedger.push(intent);
-    const points = awardPoints(memberId, 3, "Sent a tip intent");
-    await saveState();
-    return json(response, 202, {
-      ...intent,
-      points,
-      ledgerSize: runtime.walletLedger.length
-    });
   }
 
   return json(response, 404, { error: "Not found" });

@@ -135,6 +135,14 @@ test("assistant and wallet endpoints return operational responses", async () => 
   assert.equal(wallet.body.amount, "2.50");
   assert.equal(wallet.body.asset, "USDt");
 
+  const transfer = await request("/api/wallet/transfer", {
+    method: "POST",
+    body: JSON.stringify({ amount: "1.25", recipient: "room-wallet", memberId: "tip-fan" })
+  });
+  assert.equal(transfer.response.status, 202);
+  assert.equal(transfer.body.intent, "transfer");
+  assert.equal(transfer.body.amount, "1.25");
+
   const tips = await request("/api/tips");
   assert.equal(tips.response.status, 200);
   assert.ok(tips.body.tips.some((tip) => tip.recipient === "top-commentator"));
@@ -147,6 +155,14 @@ test("assistant and wallet endpoints return operational responses", async () => 
   assert.equal(walletStatus.response.status, 200);
   assert.equal(walletStatus.body.asset, "USDt");
   assert.ok(walletStatus.body.receiveTarget);
+
+  const profile = await request("/api/profile", {
+    method: "PATCH",
+    body: JSON.stringify({ memberId: "tip-fan", displayName: "Tip Fan", walletAddress: "MESH123" })
+  });
+  assert.equal(profile.response.status, 200);
+  assert.equal(profile.body.displayName, "Tip Fan");
+  assert.equal(profile.body.walletAddress, "MESH123");
 });
 
 test("invalid payloads are rejected", async () => {

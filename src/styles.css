@@ -336,6 +336,44 @@ p {
   margin-bottom: 14px;
 }
 
+.profile-strip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: -2px 0 16px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+}
+
+.profile-strip > div,
+.profile-strip button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.profile-strip span {
+  font-weight: 900;
+}
+
+.profile-strip small {
+  color: var(--muted);
+  font-weight: 750;
+}
+
+.profile-strip button {
+  min-height: 40px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 0 13px;
+  background: var(--ink);
+  color: var(--paper);
+  font-weight: 850;
+}
+
 .room-chips button,
 .join-room button {
   min-height: 40px;
@@ -950,6 +988,30 @@ select {
   margin-top: 5px;
 }
 
+.add-pocket {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 48px;
+  gap: 8px;
+  padding: 10px;
+  border: 1px dashed rgba(247, 244, 236, 0.24);
+  border-radius: 14px;
+  background: rgba(247, 244, 236, 0.06);
+}
+
+.add-pocket input {
+  min-height: 44px;
+  border-radius: 10px;
+  background: rgba(247, 244, 236, 0.1);
+}
+
+.add-pocket button {
+  min-height: 44px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--teal);
+  color: #06211c;
+}
+
 .send-sheet,
 .payment-request,
 .recent-wallet-tips {
@@ -1025,6 +1087,7 @@ select {
 .wallet-field input,
 .wallet-field select,
 .amount-field input,
+.add-pocket input,
 .wallet-management-panel input,
 .send-sheet textarea {
   width: 100%;
@@ -1058,6 +1121,7 @@ select {
 }
 
 .quick-amounts button,
+.recipient-shortcut,
 .wallet-manage-toggle,
 .wallet-actions button {
   min-height: 42px;
@@ -1071,6 +1135,15 @@ select {
 .quick-amounts button.active {
   border-color: var(--teal);
   background: rgba(24, 199, 173, 0.18);
+}
+
+.recipient-shortcut {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  width: 100%;
+  margin-top: 8px;
 }
 
 .send-sheet textarea {
@@ -1214,6 +1287,20 @@ select {
   background: rgba(5, 15, 12, 0.46);
 }
 
+.wallet-key-card.sensitive {
+  background: #211b12;
+}
+
+.wallet-key-card button,
+.wallet-import button {
+  min-height: 40px;
+  border: 1px solid rgba(247, 244, 236, 0.14);
+  border-radius: 10px;
+  background: #f5f0e6;
+  color: #121d17;
+  font-weight: 850;
+}
+
 .wallet-key-card code,
 .wallet-key-card p {
   margin: 0;
@@ -1232,6 +1319,12 @@ select {
   border: 1px solid rgba(247, 244, 236, 0.14);
   border-radius: 10px;
   background: rgba(247, 244, 236, 0.9);
+}
+
+.wallet-import {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
 }
 
 .activity-grid {
@@ -1585,8 +1678,13 @@ li::before {
   }
 
   .rooms-summary,
+  .profile-strip,
   .fixtures-head {
     flex-direction: column;
+  }
+
+  .profile-strip {
+    align-items: stretch;
   }
 
   .join-room {

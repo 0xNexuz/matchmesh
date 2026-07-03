@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>MatchMesh Build</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <style>
+      :root {
+        --ink: #101613;
+        --muted: #627069;
+        --paper: #f7f4ec;
+        --surface: #fffdf7;
+        --line: #ded8ca;
+        --teal: #18c7ad;
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        color: var(--ink);
+        background: var(--paper);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+      }
+
+      main {
+        width: min(960px, calc(100% - 36px));
+        margin: 0 auto;
+        padding: 56px 0 72px;
+      }
+
+      header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 18px;
+        margin-bottom: 64px;
+      }
+
+      a {
+        color: inherit;
+        font-weight: 850;
+        text-decoration: none;
+      }
+
+      .button {
+        min-height: 44px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 999px;
+        padding: 0 16px;
+        background: var(--ink);
+        color: var(--paper);
+      }
+
+      .eyebrow {
+        color: #087d6f;
+        font-weight: 900;
+      }
+
+      h1 {
+        max-width: 760px;
+        margin: 0 0 18px;
+        font-size: clamp(3rem, 8vw, 6.5rem);
+        line-height: 0.92;
+        letter-spacing: 0;
+      }
+
+      h2 {
+        margin: 0 0 12px;
+        font-size: clamp(1.8rem, 4vw, 3.4rem);
+        line-height: 1;
+      }
+
+      p {
+        color: var(--muted);
+        line-height: 1.7;
+      }
+
+      section {
+        margin-top: 44px;
+        padding: 28px;
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        background: var(--surface);
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 14px;
+      }
+
+      article {
+        padding: 18px;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: #fbf8f0;
+      }
+
+      code {
+        display: inline-block;
+        margin: 4px 4px 0 0;
+        padding: 6px 8px;
+        border-radius: 8px;
+        background: #101613;
+        color: #f7f4ec;
+        font-size: 0.84rem;
+      }
+
+      ul {
+        display: grid;
+        gap: 10px;
+        padding-left: 20px;
+        color: var(--muted);
+        line-height: 1.65;
+      }
+
+      @media (max-width: 720px) {
+        header,
+        .grid {
+          grid-template-columns: 1fr;
+          flex-direction: column;
+          align-items: flex-start;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <strong>MatchMesh Build</strong>
+        <a class="button" href="/">Open app</a>
+      </header>
+
+      <p class="eyebrow">Product architecture</p>
+      <h1>Local-first football rooms with a self-custodial wallet layer.</h1>
+      <p>
+        MatchMesh is built for fans watching football together in places where connectivity can be uneven.
+        The app keeps room entry, chat, points, live match context, creator tips, and wallet actions in one loop.
+      </p>
+
+      <section>
+        <h2>Runtime</h2>
+        <div class="grid">
+          <article>
+            <h3>Frontend</h3>
+            <p>Vite and React run the public app on Vercel. The interface handles rooms, chat, wallet controls, QR receive, points, and match state.</p>
+            <code>React</code><code>Vite</code><code>Vercel</code>
+          </article>
+          <article>
+            <h3>Native service</h3>
+            <p>Render hosts the Node runtime used for stateful rooms, profile updates, wallet status, and WDK-backed wallet receipts.</p>
+            <code>Node</code><code>Render</code><code>WDK</code>
+          </article>
+          <article>
+            <h3>Football data</h3>
+            <p>API-Sports is used for World Cup fixtures, score state, events, and player activity where the provider exposes it.</p>
+            <code>API-Football</code><code>Live fixtures</code>
+          </article>
+          <article>
+            <h3>Room state</h3>
+            <p>Rooms are invite-code based. Chat, members, points, tips, and profile state are saved by the native service and refreshed by the client.</p>
+            <code>MESH code</code><code>Profile</code><code>Leaderboard</code>
+          </article>
+        </div>
+      </section>
+
+      <section>
+        <h2>Wallet behavior</h2>
+        <ul>
+          <li>The wallet belongs to the current user profile and exposes a receive QR for the active account.</li>
+          <li>Users start with one Spending pocket and can add more pockets for pools, creator payouts, or matchday costs.</li>
+          <li>Transfers create a wallet receipt immediately and attempt WDK execution when a native wallet, token mint, RPC, and valid recipient are available.</li>
+          <li>Recovery, import, export, rotation, and fund removal are hidden behind a Recovery & keys drawer so sensitive actions stay deliberate.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>Low connectivity path</h2>
+        <p>
+          MatchMesh keeps the critical experience small: room code, local room log, cached fixture state,
+          local assistant responses, and queued wallet receipts. Full P2P discovery is enabled when the native
+          runtime is started with Hyperswarm support.
+        </p>
+      </section>
+
+      <section>
+        <h2>App flow iteration</h2>
+        <ul>
+          <li>Create or rename a room.</li>
+          <li>Copy the invite link or MESH code.</li>
+          <li>Join from another window, phone, or browser profile.</li>
+          <li>Send messages and watch points update.</li>
+          <li>Use the live pitch view for score, players, and match events.</li>
+          <li>Send a payment, tip the top commentator, or receive USDT from a QR code.</li>
+        </ul>
+      </section>
+    </main>
+  </body>
+</html>
