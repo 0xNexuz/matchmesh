@@ -138,7 +138,9 @@ async function initializeWdk() {
     runtime.wdkStatus = {
       ready: true,
       mode: "policy-ledger",
-      detail: `WDK unavailable; wallet intents are recorded for policy review. ${error.message}`
+      detail: process.env.VERCEL
+        ? "WDK native runtime unavailable on Vercel; wallet intents are recorded for policy review."
+        : `WDK unavailable; wallet intents are recorded for policy review. ${error.message}`
     };
   }
 }
