@@ -29,7 +29,14 @@ function shouldProxyToNative(pathname) {
 async function bodyBuffer(request) {
   if (Buffer.isBuffer(request.body)) return request.body;
   if (typeof request.body === "string") return Buffer.from(request.body);
-  if (request.body && typeof request.body === "object") return Buffer.from(JSON.stringify(request.body));
+  if (
+    request.body &&
+    typeof request.body === "object" &&
+    !request.body.pipe &&
+    !request.body.readable
+  ) {
+    return Buffer.from(JSON.stringify(request.body));
+  }
   if (!request[Symbol.asyncIterator]) return undefined;
   const chunks = [];
   for await (const chunk of request) chunks.push(chunk);
@@ -39,10 +46,9 @@ async function bodyBuffer(request) {
 async function proxyToNative(request, response, url) {
   const target = `${nativeApiBase()}${url.pathname}${url.search}`;
   const headers = {};
-  for (const [key, value] of Object.entries(request.headers)) {
-    if (key.toLowerCase() === "host" || hopByHopHeaders.has(key.toLowerCase())) continue;
-    headers[key] = value;
-  }
+  if (request.headers["content-type"]) headers["content-type"] = request.headers["content-type"];
+  if (request.headers.accept) headers.accept = request.headers.accept;
+  if (request.headers["user-agent"]) headers["user-agent"] = request.headers["user-agent"];
   const nativeResponse = await fetch(target, {
     method: request.method,
     headers,
