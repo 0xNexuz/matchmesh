@@ -27,6 +27,10 @@ function shouldProxyToNative(pathname) {
 }
 
 async function bodyBuffer(request) {
+  if (Buffer.isBuffer(request.body)) return request.body;
+  if (typeof request.body === "string") return Buffer.from(request.body);
+  if (request.body && typeof request.body === "object") return Buffer.from(JSON.stringify(request.body));
+  if (!request[Symbol.asyncIterator]) return undefined;
   const chunks = [];
   for await (const chunk of request) chunks.push(chunk);
   return Buffer.concat(chunks);
