@@ -39,7 +39,8 @@ import {
   joinRoom,
   requestAiCompletion,
   sendChatMessage,
-  sendWalletTip
+  sendWalletTip,
+  updateRoom
 } from "./runtimeClient";
 import "./styles.css";
 
@@ -113,8 +114,43 @@ function extractInviteCode(value) {
   return (value || "").toUpperCase().match(/MESH-[A-F0-9]{4}/u)?.[0] || "";
 }
 
+const walletWords = [
+  "match", "mesh", "final", "chant", "stand", "pitch", "trust", "local",
+  "signal", "block", "keeper", "corner", "switch", "press", "ledger", "vault",
+  "route", "tempo", "token", "crowd", "assist", "green", "amber", "rally",
+  "north", "south", "ticket", "minute", "attack", "shield", "river", "market"
+];
+
+const defaultPockets = [
+  { id: "spending", name: "Spending", balance: 250, icon: CircleDollarSign },
+  { id: "pool", name: "Watch Party Pool", balance: 450, icon: Users },
+  { id: "tips", name: "Creator Tips", balance: 300.75, icon: Star }
+];
+
+function generateLocalWallet() {
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  const phrase = Array.from(bytes.slice(0, 12), (value) => walletWords[value % walletWords.length]).join(" ");
+  const fingerprint = Array.from(bytes.slice(8), (value) => value.toString(16).padStart(2, "0")).join("");
+  return {
+    address: `MESH${fingerprint.toUpperCase()}`,
+    recoveryPhrase: phrase,
+    createdAt: new Date().toISOString()
+  };
+}
+
+function storedJson(key, fallback) {
+  try {
+    return JSON.parse(window.localStorage.getItem(key)) || fallback;
+  } catch {
+    return fallback;
+  }
+}
+
 function App() {
   const [roomCode, setRoomCode] = useState("MESH-90");
+  const [roomName, setRoomName] = useState("Lagos Final Watch");
+  const [roomNameDraft, setRoomNameDraft] = useState("Lagos Final Watch");
   const [activePrompt, setActivePrompt] = useState(prompts[0]);
   const [chatInput, setChatInput] = useState("");
   const [runtimeStatus, setRuntimeStatus] = useState(null);
@@ -133,7 +169,11 @@ function App() {
   const [receiveQr, setReceiveQr] = useState("");
   const [walletExport, setWalletExport] = useState(null);
   const [importPhrase, setImportPhrase] = useState("");
-  const [recoveryOpen, setRecoveryOpen] = useState(false);
+  const [walletManageOpen, setWalletManageOpen] = useState(false);
+  const [revealKeys, setRevealKeys] = useState(false);
+  const [localWallet, setLocalWallet] = useState(null);
+  const [walletPockets, setWalletPockets] = useState(defaultPockets);
+  const [selectedPocket, setSelectedPocket] = useState("spending");
   const [sendAmount, setSendAmount] = useState("25.00");
   const [tipRecipient, setTipRecipient] = useState("room-top-commentator");
   const [fixturesState, setFixturesState] = useState({
@@ -161,6 +201,13 @@ function App() {
 
   useEffect(() => {
     getRuntimeStatus().then(setRuntimeStatus);
+    const savedWallet = storedJson("matchmesh-wallet", null);
+    const savedPockets = storedJson("matchmesh-wallet-pockets", defaultPockets.map(({ icon, ...pocket }) => pocket));
+    if (savedWallet) setLocalWallet(savedWallet);
+    setWalletPockets(savedPockets.map((pocket) => ({
+      ...pocket,
+      icon: defaultPockets.find((item) => item.id === pocket.id)?.icon || CircleDollarSign
+    })));
     getFixtures()
       .then(setFixturesState)
       .catch(() => {
@@ -176,7 +223,9 @@ function App() {
   }, []);
 
   useEffect(() => {
-    const receiveTarget = walletInfo?.receiveTarget || `matchmesh:room:${roomCode}:USDt`;
+    const receiveTarget = localWallet?.address
+      ? `matchmesh:${localWallet.address}?asset=USDT`
+      : walletInfo?.receiveTarget || `matchmesh:room:${roomCode}:USDt`;
     QRCode.toDataURL(receiveTarget, {
       margin: 1,
       width: 144,
@@ -185,7 +234,7 @@ function App() {
         light: "#fffdf7"
       }
     }).then(setReceiveQr).catch(() => setReceiveQr(""));
-  }, [roomCode, walletInfo]);
+  }, [roomCode, walletInfo, localWallet]);
 
   async function refreshProfile() {
     try {
@@ -217,6 +266,8 @@ function App() {
     try {
       const room = await createRoom(name);
       setRoomCode(room.inviteCode);
+      setRoomName(room.name);
+      setRoomNameDraft(room.name);
       setRoomState(`${room.name} active with ${room.peers} peer${room.peers === 1 ? "" : "s"}`);
       if (room.points) setFanPoints(room.points.total);
       if (fixtureId) {
@@ -235,6 +286,8 @@ function App() {
       const inviteCode = extractInviteCode(joinCode);
       const room = await joinRoom(inviteCode);
       setRoomCode(room.inviteCode);
+      setRoomName(room.name);
+      setRoomNameDraft(room.name);
       setRoomState(`${room.name} joined with ${room.members || 1} member${room.members === 1 ? "" : "s"}`);
       if (room.points) setFanPoints(room.points.total);
       const result = await getRoomMessages(room.inviteCode);
@@ -267,6 +320,53 @@ function App() {
     } catch (error) {
       setWalletState(error.payload?.error || error.message);
     }
+  }
+
+  async function handleRenameRoom() {
+    try {
+      const room = await updateRoom(roomCode, roomNameDraft);
+      setRoomName(room.name);
+      setRoomNameDraft(room.name);
+      setRoomState(`${room.name} renamed`);
+      await refreshProfile();
+    } catch (error) {
+      setRoomState(error.payload?.error || error.message);
+    }
+  }
+
+  function savePockets(nextPockets) {
+    setWalletPockets(nextPockets);
+    window.localStorage.setItem("matchmesh-wallet-pockets", JSON.stringify(nextPockets.map(({ icon, ...pocket }) => pocket)));
+  }
+
+  function handleGenerateWallet() {
+    const wallet = generateLocalWallet();
+    window.localStorage.setItem("matchmesh-wallet", JSON.stringify(wallet));
+    setLocalWallet(wallet);
+    setRevealKeys(false);
+    setWalletState("Local wallet generated and saved on this device");
+  }
+
+  function handleRotateWallet() {
+    const previous = localWallet ? storedJson("matchmesh-wallet-archive", []) : [];
+    if (localWallet) {
+      window.localStorage.setItem("matchmesh-wallet-archive", JSON.stringify([...previous.slice(-4), localWallet]));
+    }
+    handleGenerateWallet();
+    setWalletState("Wallet rotated; previous key archived on this device");
+  }
+
+  function handleRemoveFunds() {
+    const amount = Number(sendAmount);
+    if (!Number.isFinite(amount) || amount <= 0) return;
+    const nextPockets = walletPockets.map((pocket) => (
+      pocket.id === selectedPocket
+        ? { ...pocket, balance: Math.max(0, Number((pocket.balance - amount).toFixed(2))) }
+        : pocket
+    ));
+    savePockets(nextPockets);
+    setWalletBalance((balance) => Math.max(0, Number((balance - amount).toFixed(2))));
+    setWalletState(`${amount.toFixed(2)} USDT removed from ${walletPockets.find((pocket) => pocket.id === selectedPocket)?.name || "wallet"}`);
   }
 
   async function handleSendMessage() {
@@ -415,9 +515,18 @@ function App() {
 
         <div className="app-shell" aria-label="MatchMesh room workspace">
           <div className="app-top">
-            <div>
+            <div className="room-title-edit">
               <span className="status-dot" />
-              <strong>Lagos Final Watch</strong>
+              <input
+                value={roomNameDraft}
+                onChange={(event) => setRoomNameDraft(event.target.value)}
+                onBlur={handleRenameRoom}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") handleRenameRoom();
+                }}
+                aria-label="Room name"
+              />
+              <button onClick={handleRenameRoom}>Rename</button>
             </div>
             <button onClick={handleCreateRoom}><Copy size={16} /> {roomCode}</button>
           </div>
@@ -521,27 +630,22 @@ function App() {
                     <ShieldCheck className="wallet-mark" size={82} aria-hidden="true" />
                   </div>
 
-                  <div className="wallet-pocket active">
-                    <div>
-                      <span>Spending</span>
-                      <strong>250.00 USDT</strong>
-                    </div>
-                    <CircleDollarSign size={18} />
-                  </div>
-                  <div className="wallet-pocket">
-                    <div>
-                      <span>Watch Party Pool</span>
-                      <strong>450.00 USDT</strong>
-                    </div>
-                    <Users size={18} />
-                  </div>
-                  <div className="wallet-pocket">
-                    <div>
-                      <span>Creator Tips</span>
-                      <strong>300.75 USDT</strong>
-                    </div>
-                    <Star size={18} />
-                  </div>
+                  {walletPockets.map((pocket) => {
+                    const Icon = pocket.icon;
+                    return (
+                      <button
+                        key={pocket.id}
+                        className={`wallet-pocket ${selectedPocket === pocket.id ? "active" : ""}`}
+                        onClick={() => setSelectedPocket(pocket.id)}
+                      >
+                        <div>
+                          <span>{pocket.name}</span>
+                          <strong>{pocket.balance.toFixed(2)} USDT</strong>
+                        </div>
+                        <Icon size={18} />
+                      </button>
+                    );
+                  })}
                 </div>
 
                 <div className="send-sheet" aria-label="Send USDT">
@@ -553,8 +657,8 @@ function App() {
                   <label>
                     From
                     <div className="wallet-field read-only">
-                      <span>Spending</span>
-                      <strong>250.00 USDT</strong>
+                      <span>{walletPockets.find((pocket) => pocket.id === selectedPocket)?.name || "Spending"}</span>
+                      <strong>{(walletPockets.find((pocket) => pocket.id === selectedPocket)?.balance || 0).toFixed(2)} USDT</strong>
                     </div>
                   </label>
 
@@ -625,7 +729,7 @@ function App() {
                     </div>
                     <div className="address-chip">
                       <span>Address</span>
-                      <code>{walletInfo?.accountAddress || walletInfo?.receiveTarget || "wallet pending"}</code>
+                      <code>{localWallet?.address || walletInfo?.accountAddress || walletInfo?.receiveTarget || "wallet pending"}</code>
                       <Copy size={15} />
                     </div>
                   </div>
@@ -646,18 +750,25 @@ function App() {
                   </div>
 
                   <button
-                    className="recovery-toggle"
+                    className="wallet-manage-toggle"
                     type="button"
-                    onClick={() => setRecoveryOpen((open) => !open)}
-                    aria-expanded={recoveryOpen}
+                    onClick={() => setWalletManageOpen((open) => !open)}
+                    aria-expanded={walletManageOpen}
                   >
-                    <KeyRound size={16} /> Recovery options
+                    <KeyRound size={16} /> Wallet management
                   </button>
-                  {recoveryOpen && (
-                    <div className="recovery-panel">
+                  {walletManageOpen && (
+                    <div className="wallet-management-panel">
                       <div className="wallet-actions">
-                        <button onClick={async () => setWalletExport(await exportWallet())}>Export</button>
-                        <button onClick={async () => setWalletState((await importWallet(importPhrase)).status)}>Import</button>
+                        <button onClick={handleGenerateWallet}>Generate wallet</button>
+                        <button onClick={() => setRevealKeys((value) => !value)}>Show keys</button>
+                        <button onClick={handleRemoveFunds}>Remove funds</button>
+                        <button onClick={handleRotateWallet}>Rotate wallet</button>
+                      </div>
+                      <div className="wallet-key-card">
+                        <span>Saved wallet</span>
+                        <code>{localWallet?.address || "No local wallet generated yet"}</code>
+                        {revealKeys && localWallet?.recoveryPhrase && <p>{localWallet.recoveryPhrase}</p>}
                       </div>
                       <input
                         value={importPhrase}
@@ -665,6 +776,10 @@ function App() {
                         placeholder="Paste recovery phrase"
                         aria-label="Recovery phrase"
                       />
+                      <div className="wallet-actions compact">
+                        <button onClick={async () => setWalletExport(await exportWallet())}>Server export</button>
+                        <button onClick={async () => setWalletState((await importWallet(importPhrase)).status)}>Import phrase</button>
+                      </div>
                       {walletExport?.recoveryPhrase && <small>Recovery phrase ready. Keep it private.</small>}
                     </div>
                   )}

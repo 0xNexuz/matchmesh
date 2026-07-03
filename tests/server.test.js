@@ -80,6 +80,13 @@ test("room creation persists chat messages", async () => {
   const messages = await request(`/api/rooms/${roomResult.body.inviteCode}/messages`);
   assert.equal(messages.response.status, 200);
   assert.ok(messages.body.messages.some((message) => message.text === "That press is working."));
+
+  const rename = await request(`/api/rooms/${roomResult.body.inviteCode}`, {
+    method: "PATCH",
+    body: JSON.stringify({ name: "Renamed Smoke Room", memberId: "test-fan" })
+  });
+  assert.equal(rename.response.status, 200);
+  assert.equal(rename.body.name, "Renamed Smoke Room");
 });
 
 test("fans can join multiple rooms and see points", async () => {

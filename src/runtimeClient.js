@@ -63,6 +63,13 @@ export function joinRoom(inviteCode) {
   });
 }
 
+export function updateRoom(inviteCode, name) {
+  return request(`/api/rooms/${encodeURIComponent(inviteCode)}`, {
+    method: "PATCH",
+    body: JSON.stringify({ name, memberId: getMemberId() })
+  });
+}
+
 export function getFanProfile() {
   return request(`/api/profile?memberId=${encodeURIComponent(getMemberId())}`);
 }

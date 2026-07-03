@@ -611,7 +611,9 @@ async function getFixtures() {
   let payload;
   try {
     payload = await fetchApiFootballFixtures();
+    if (payload && !payload.fixtures.length) payload = null;
     payload ||= await fetchFootballDataFixtures();
+    if (payload && !payload.fixtures.length) payload = null;
   } catch (error) {
     payload = {
       ...fallbackFixtures(),
@@ -773,6 +775,29 @@ async function handleApi(request, response, pathname) {
       : { total: runtime.points.get(memberId)?.total || 0, events: runtime.points.get(memberId)?.events || [] };
     await saveState();
     return json(response, 200, { ...room, points });
+  }
+
+  const roomDetailsMatch = pathname.match(/^\/api\/rooms\/([^/]+)$/u);
+  if (roomDetailsMatch && request.method === "PATCH") {
+    const inviteCode = decodeURIComponent(roomDetailsMatch[1]);
+    if (!isValidRoomCode(inviteCode)) return json(response, 400, { error: "Invalid room code" });
+    const room = runtime.rooms.get(inviteCode);
+    if (!room) return json(response, 404, { error: "Room not found on this device yet" });
+    const body = await readBody(request);
+    const name = text(body.name).slice(0, 80);
+    if (!name) return json(response, 400, { error: "Room name is required" });
+    room.name = name;
+    room.updatedAt = new Date().toISOString();
+    roomMessages(inviteCode).push({
+      id: randomBytes(8).toString("hex"),
+      name: "System",
+      team: "SYS",
+      text: `${memberIdFrom(body.memberId)} renamed the room to ${name}.`,
+      tag: "Room",
+      createdAt: room.updatedAt
+    });
+    await saveState();
+    return json(response, 200, room);
   }
 
   const roomMessagesMatch = pathname.match(/^\/api\/rooms\/([^/]+)\/messages$/u);
