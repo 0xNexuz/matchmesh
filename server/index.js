@@ -94,7 +94,9 @@ async function initializePears() {
     runtime.pears = {
       ready: true,
       mode: "memory-local",
-      detail: `Persistent Hypercore unavailable; in-memory room log active. ${error.message}`
+      detail: process.env.VERCEL
+        ? "P2P native runtime unavailable on Vercel; in-memory room log active."
+        : `Persistent Hypercore unavailable; in-memory room log active. ${error.message}`
     };
   }
 }
@@ -103,7 +105,8 @@ async function initializeWdk() {
   try {
     const mod = await import("@tetherto/wdk");
     const WDK = mod.default || mod.WDK;
-    if (!process.env.MATCHMESH_WALLET_SEED) {
+    const walletSeed = process.env.MATCHMESH_WALLET_SEED?.trim();
+    if (!walletSeed) {
       runtime.wdk = null;
       runtime.wdkStatus = {
         ready: true,
@@ -112,13 +115,14 @@ async function initializeWdk() {
       };
       return;
     }
-    runtime.wdk = new WDK(process.env.MATCHMESH_WALLET_SEED);
+    runtime.wdk = new WDK(walletSeed);
     const walletModules = [];
-    if (process.env.MATCHMESH_SOLANA_RPC_URL) {
+    const solanaRpcUrl = process.env.MATCHMESH_SOLANA_RPC_URL?.trim();
+    if (solanaRpcUrl) {
       const solana = await import("@tetherto/wdk-wallet-solana");
       runtime.wdk.registerWallet("solana", solana.default, {
-        rpcUrl: process.env.MATCHMESH_SOLANA_RPC_URL,
-        commitment: process.env.MATCHMESH_SOLANA_COMMITMENT || "confirmed"
+        rpcUrl: solanaRpcUrl,
+        commitment: process.env.MATCHMESH_SOLANA_COMMITMENT?.trim() || "confirmed"
       });
       walletModules.push("solana");
     }
@@ -532,8 +536,9 @@ async function handleApi(request, response, pathname) {
     }
     if (!recipient) return json(response, 400, { error: "Recipient is required" });
     let accountAddress = null;
-    if (runtime.wdk && process.env.MATCHMESH_WALLET_CHAIN) {
-      const account = await runtime.wdk.getAccount(process.env.MATCHMESH_WALLET_CHAIN, 0);
+    const walletChain = process.env.MATCHMESH_WALLET_CHAIN?.trim();
+    if (runtime.wdk && walletChain) {
+      const account = await runtime.wdk.getAccount(walletChain, 0);
       accountAddress = await account.getAddress();
     }
     const intent = {
