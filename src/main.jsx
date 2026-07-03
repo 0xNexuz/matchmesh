@@ -251,9 +251,8 @@ function App() {
   }, []);
 
   useEffect(() => {
-    const receiveTarget = localWallet?.address
-      ? `matchmesh:${localWallet.address}?asset=USDT`
-      : walletInfo?.receiveTarget || `matchmesh:room:${roomCode}:USDt`;
+    const receiveTarget = walletInfo?.receiveTarget
+      || (localWallet?.address ? `matchmesh:${localWallet.address}?asset=USDT` : `matchmesh:room:${roomCode}:USDt`);
     QRCode.toDataURL(receiveTarget, {
       margin: 1,
       width: 144,
@@ -898,7 +897,7 @@ function App() {
                     </div>
                     <div className="address-chip">
                       <span>Address</span>
-                      <code>{localWallet?.address || walletInfo?.accountAddress || walletInfo?.receiveTarget || "wallet pending"}</code>
+                      <code>{walletInfo?.accountAddress || localWallet?.address || walletInfo?.receiveTarget || "wallet pending"}</code>
                       <Copy size={15} />
                     </div>
                   </div>
