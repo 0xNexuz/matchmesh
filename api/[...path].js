@@ -34,8 +34,11 @@ async function bodyBuffer(request) {
 
 async function proxyToNative(request, response, url) {
   const target = `${nativeApiBase()}${url.pathname}${url.search}`;
-  const headers = { ...request.headers };
-  delete headers.host;
+  const headers = {};
+  for (const [key, value] of Object.entries(request.headers)) {
+    if (key.toLowerCase() === "host" || hopByHopHeaders.has(key.toLowerCase())) continue;
+    headers[key] = value;
+  }
   const nativeResponse = await fetch(target, {
     method: request.method,
     headers,
