@@ -1,0 +1,132 @@
+import assert from "node:assert/strict";
+import { after, before, test } from "node:test";
+
+let baseUrl;
+let server;
+
+before(async () => {
+  process.env.NODE_ENV = "test";
+  process.env.MATCHMESH_DATA_DIR = ".matchmesh-data-test";
+  process.env.MATCHMESH_WALLET_SEED = "";
+  ({ server } = await import("../server/index.js"));
+  await new Promise((resolve) => {
+    server.listen(0, "127.0.0.1", resolve);
+  });
+  const address = server.address();
+  baseUrl = `http://${address.address}:${address.port}`;
+});
+
+after(async () => {
+  await new Promise((resolve, reject) => {
+    server.close((error) => (error ? reject(error) : resolve()));
+  });
+});
+
+async function request(path, options = {}) {
+  const response = await fetch(`${baseUrl}${path}`, {
+    headers: { "content-type": "application/json" },
+    ...options
+  });
+  const body = await response.json();
+  return { response, body };
+}
+
+test("health and status endpoints are available", async () => {
+  const health = await request("/api/health");
+  assert.equal(health.response.status, 200);
+  assert.equal(health.body.ok, true);
+
+  const status = await request("/api/status");
+  assert.equal(status.response.status, 200);
+  assert.equal(status.body.assistant.ready, true);
+  assert.equal(status.body.wdk.ready, true);
+  assert.equal(status.body.fixtures.ready, true);
+});
+
+test("fixtures endpoint returns a room-ready feed", async () => {
+  const fixtures = await request("/api/fixtures");
+  assert.equal(fixtures.response.status, 200);
+  assert.ok(Array.isArray(fixtures.body.fixtures));
+  assert.ok(fixtures.body.fixtures.length > 0);
+  assert.ok(fixtures.body.fixtures[0].home);
+  assert.ok(fixtures.body.fixtures[0].away);
+});
+
+test("room creation persists chat messages", async () => {
+  const roomResult = await request("/api/rooms", {
+    method: "POST",
+    body: JSON.stringify({ name: "Smoke Test Room", memberId: "test-fan" })
+  });
+  assert.equal(roomResult.response.status, 201);
+  assert.match(roomResult.body.inviteCode, /^MESH-[A-F0-9]{4}$/u);
+  assert.equal(roomResult.body.points.total, 10);
+
+  const messageResult = await request(`/api/rooms/${roomResult.body.inviteCode}/messages`, {
+    method: "POST",
+    body: JSON.stringify({ memberId: "test-fan", name: "Ada", team: "NGA", text: "That press is working.", tag: "Live" })
+  });
+  assert.equal(messageResult.response.status, 201);
+  assert.equal(messageResult.body.text, "That press is working.");
+  assert.equal(messageResult.body.points.total, 12);
+
+  const messages = await request(`/api/rooms/${roomResult.body.inviteCode}/messages`);
+  assert.equal(messages.response.status, 200);
+  assert.ok(messages.body.messages.some((message) => message.text === "That press is working."));
+});
+
+test("fans can join multiple rooms and see points", async () => {
+  const first = await request("/api/rooms", {
+    method: "POST",
+    body: JSON.stringify({ name: "Argentina Room", memberId: "multi-fan" })
+  });
+  const second = await request("/api/rooms", {
+    method: "POST",
+    body: JSON.stringify({ name: "Ghana Room", memberId: "host-fan" })
+  });
+  const join = await request("/api/rooms/join", {
+    method: "POST",
+    body: JSON.stringify({ inviteCode: second.body.inviteCode, memberId: "multi-fan" })
+  });
+  assert.equal(join.response.status, 200);
+  assert.equal(join.body.points.total, 15);
+
+  const profile = await request("/api/profile?memberId=multi-fan");
+  assert.equal(profile.response.status, 200);
+  assert.equal(profile.body.points, 15);
+  assert.deepEqual(profile.body.rooms.map((room) => room.inviteCode).sort(), [
+    first.body.inviteCode,
+    second.body.inviteCode
+  ].sort());
+});
+
+test("assistant and wallet endpoints return operational responses", async () => {
+  const ai = await request("/api/ai/completion", {
+    method: "POST",
+    body: JSON.stringify({ prompt: "Summarize last 15", context: { roomCode: "MESH-ABCD" } })
+  });
+  assert.equal(ai.response.status, 200);
+  assert.equal(ai.body.mode, "deterministic-local");
+  assert.match(ai.body.text, /MESH-ABCD/u);
+
+  const wallet = await request("/api/wallet/tip", {
+    method: "POST",
+    body: JSON.stringify({ amount: "2.50", recipient: "top-commentator" })
+  });
+  assert.equal(wallet.response.status, 202);
+  assert.equal(wallet.body.amount, "2.50");
+  assert.equal(wallet.body.asset, "USDt");
+});
+
+test("invalid payloads are rejected", async () => {
+  const message = await request("/api/rooms/not-a-room/messages", {
+    method: "POST",
+    body: JSON.stringify({ text: "hello" })
+  });
+  assert.equal(message.response.status, 400);
+
+  const wallet = await request("/api/wallet/tip", {
+    method: "POST",
+    body: JSON.stringify({ amount: "1000", recipient: "top-commentator" })
+  });
+  assert.equal(wallet.response.status, 400);
+});
