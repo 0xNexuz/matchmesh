@@ -97,6 +97,10 @@ test("fans can join multiple rooms and see points", async () => {
     first.body.inviteCode,
     second.body.inviteCode
   ].sort());
+
+  const leaderboard = await request("/api/leaderboard");
+  assert.equal(leaderboard.response.status, 200);
+  assert.ok(leaderboard.body.leaderboard.some((fan) => fan.memberId === "multi-fan"));
 });
 
 test("assistant and wallet endpoints return operational responses", async () => {
@@ -110,11 +114,19 @@ test("assistant and wallet endpoints return operational responses", async () => 
 
   const wallet = await request("/api/wallet/tip", {
     method: "POST",
-    body: JSON.stringify({ amount: "2.50", recipient: "top-commentator" })
+    body: JSON.stringify({ amount: "2.50", recipient: "top-commentator", memberId: "tip-fan" })
   });
   assert.equal(wallet.response.status, 202);
   assert.equal(wallet.body.amount, "2.50");
   assert.equal(wallet.body.asset, "USDt");
+
+  const tips = await request("/api/tips");
+  assert.equal(tips.response.status, 200);
+  assert.ok(tips.body.tips.some((tip) => tip.recipient === "top-commentator"));
+
+  const walletExport = await request("/api/wallet/export");
+  assert.equal(walletExport.response.status, 200);
+  assert.ok("recoveryPhrase" in walletExport.body);
 });
 
 test("invalid payloads are rejected", async () => {

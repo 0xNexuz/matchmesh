@@ -22,10 +22,14 @@ import {
 import { integrationModules } from "./sdkAdapters";
 import {
   createRoom,
+  exportWallet,
   getFanProfile,
   getFixtures,
+  getLeaderboard,
   getRoomMessages,
   getRuntimeStatus,
+  getRecentTips,
+  importWallet,
   joinRoom,
   requestAiCompletion,
   sendChatMessage,
@@ -99,6 +103,25 @@ function fixtureProviderLabel(provider) {
   return labels[provider] || "World Cup slate";
 }
 
+function extractInviteCode(value) {
+  return (value || "").toUpperCase().match(/MESH-[A-F0-9]{4}/u)?.[0] || "";
+}
+
+function qrSvgData(value) {
+  const cells = 21;
+  let hash = 0;
+  for (const char of value) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
+  const rects = [];
+  for (let y = 0; y < cells; y += 1) {
+    for (let x = 0; x < cells; x += 1) {
+      const finder = (x < 7 && y < 7) || (x > 13 && y < 7) || (x < 7 && y > 13);
+      const bit = finder || (((hash + x * 17 + y * 31 + x * y) % 7) < 3);
+      if (bit) rects.push(`<rect x="${x}" y="${y}" width="1" height="1"/>`);
+    }
+  }
+  return `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${cells} ${cells}"><rect width="${cells}" height="${cells}" fill="#fffdf7"/><g fill="#101613">${rects.join("")}</g></svg>`)}`;
+}
+
 function App() {
   const [roomCode, setRoomCode] = useState("MESH-90");
   const [activePrompt, setActivePrompt] = useState(prompts[0]);
@@ -112,6 +135,11 @@ function App() {
   const [joinedRooms, setJoinedRooms] = useState([]);
   const [joinCode, setJoinCode] = useState("");
   const [fanPoints, setFanPoints] = useState(0);
+  const [pointEvents, setPointEvents] = useState([]);
+  const [leaderboard, setLeaderboard] = useState([]);
+  const [recentTips, setRecentTips] = useState([]);
+  const [walletExport, setWalletExport] = useState(null);
+  const [importPhrase, setImportPhrase] = useState("");
   const [fixturesState, setFixturesState] = useState({
     provider: "loading",
     fixtures: [],
@@ -147,6 +175,9 @@ function App() {
       const profile = await getFanProfile();
       setJoinedRooms(profile.rooms || []);
       setFanPoints(profile.points || 0);
+      setPointEvents(profile.pointEvents || []);
+      getLeaderboard().then((result) => setLeaderboard(result.leaderboard || [])).catch(() => {});
+      getRecentTips().then((result) => setRecentTips(result.tips || [])).catch(() => {});
     } catch {
       setJoinedRooms([]);
     }
@@ -181,7 +212,8 @@ function App() {
 
   async function handleJoinRoom() {
     try {
-      const room = await joinRoom(joinCode);
+      const inviteCode = extractInviteCode(joinCode);
+      const room = await joinRoom(inviteCode);
       setRoomCode(room.inviteCode);
       setRoomState(`${room.name} joined with ${room.members || 1} member${room.members === 1 ? "" : "s"}`);
       if (room.points) setFanPoints(room.points.total);
@@ -211,6 +243,7 @@ function App() {
       setWalletBalance((balance) => Math.max(0, Number((balance - Number(result.amount)).toFixed(2))));
       if (result.points) setFanPoints(result.points.total);
       setWalletState(`${result.asset} ${result.amount} ${result.status}`);
+      await refreshProfile();
     } catch (error) {
       setWalletState(error.payload?.error || error.message);
     }
@@ -230,6 +263,7 @@ function App() {
       if (message.points) setFanPoints(message.points.total);
       setRoomMessages((current) => [...current.slice(-49), message]);
       setChatInput("");
+      await refreshProfile();
     } catch (error) {
       setRoomState(error.payload?.error || error.message);
     }
@@ -307,6 +341,14 @@ function App() {
             <input
               value={joinCode}
               onChange={(event) => setJoinCode(event.target.value.toUpperCase())}
+              onPaste={(event) => {
+                const pasted = event.clipboardData.getData("text");
+                const inviteCode = extractInviteCode(pasted);
+                if (inviteCode) {
+                  event.preventDefault();
+                  setJoinCode(inviteCode);
+                }
+              }}
               onKeyDown={(event) => {
                 if (event.key === "Enter") handleJoinRoom();
               }}
@@ -430,10 +472,61 @@ function App() {
                 <span>Balance</span>
                 <strong>{walletBalance.toFixed(2)} USDt</strong>
               </div>
+              <div className="receive-card">
+                <img src={qrSvgData(runtimeStatus?.wdk?.mode || "matchmesh-wallet")} alt="Receive QR" />
+                <div>
+                  <span>Receive on {runtimeStatus?.wdk?.mode === "@tetherto/wdk" ? "Solana devnet" : "policy ledger"}</span>
+                  <code>{runtimeStatus?.wdk?.mode || "wallet"}</code>
+                </div>
+              </div>
               <button className="button primary full" onClick={handleTip}><CircleDollarSign size={18} /> Send 2.50 USDt tip</button>
               <p><KeyRound size={15} /> {walletState}</p>
+              <div className="wallet-actions">
+                <button onClick={async () => setWalletExport(await exportWallet())}>Export</button>
+                <button onClick={async () => setWalletState((await importWallet(importPhrase)).status)}>Import</button>
+              </div>
+              <input
+                value={importPhrase}
+                onChange={(event) => setImportPhrase(event.target.value)}
+                placeholder="Paste recovery phrase"
+                aria-label="Recovery phrase"
+              />
+              {walletExport?.recoveryPhrase && <small>Recovery phrase ready. Keep it private.</small>}
             </section>
           </div>
+        </div>
+
+        <div className="activity-grid" aria-label="Activity and points">
+          <section>
+            <h3>Recent creators tipped</h3>
+            {recentTips.slice(0, 5).map((tip) => (
+              <article key={tip.id}>
+                <strong>{tip.recipient}</strong>
+                <span>{tip.amount} {tip.asset} · {tip.status}</span>
+              </article>
+            ))}
+            {!recentTips.length && <p>No tips yet.</p>}
+          </section>
+          <section>
+            <h3>Points activity</h3>
+            {pointEvents.slice(-5).reverse().map((event) => (
+              <article key={event.id}>
+                <strong>+{event.amount}</strong>
+                <span>{event.reason}</span>
+              </article>
+            ))}
+            {!pointEvents.length && <p>Create, join, chat, or tip to earn points.</p>}
+          </section>
+          <section>
+            <h3>Leaderboard</h3>
+            {leaderboard.slice(0, 5).map((fan, index) => (
+              <article key={fan.memberId}>
+                <strong>{index + 1}. {fan.memberId}</strong>
+                <span>{fan.points} pts</span>
+              </article>
+            ))}
+            {!leaderboard.length && <p>No ranked fans yet.</p>}
+          </section>
         </div>
       </section>
 

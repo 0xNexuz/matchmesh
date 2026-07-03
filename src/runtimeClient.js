@@ -48,6 +48,25 @@ export function getFanProfile() {
   return request("/api/profile?memberId=local-fan");
 }
 
+export function getLeaderboard() {
+  return request("/api/leaderboard");
+}
+
+export function getRecentTips() {
+  return request("/api/tips");
+}
+
+export function exportWallet() {
+  return request("/api/wallet/export");
+}
+
+export function importWallet(recoveryPhrase) {
+  return request("/api/wallet/import", {
+    method: "POST",
+    body: JSON.stringify({ recoveryPhrase })
+  });
+}
+
 export function requestAiCompletion(prompt, context) {
   return request("/api/ai/completion", {
     method: "POST",

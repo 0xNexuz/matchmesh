@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 import { createReadStream, existsSync } from "node:fs";
-import { mkdir } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { extname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createServer } from "node:http";
@@ -21,6 +21,7 @@ const dataDir = process.env.MATCHMESH_DATA_DIR
   : process.env.VERCEL
     ? join(tmpdir(), "matchmesh-data")
     : join(root, ".matchmesh-data");
+const stateFile = join(dataDir, "state.json");
 
 const mime = {
   ".html": "text/html; charset=utf-8",
@@ -50,10 +51,33 @@ const runtime = {
 };
 
 await mkdir(dataDir, { recursive: true });
+await loadState();
 await initializeRuntime();
 
 async function initializeRuntime() {
   await Promise.all([initializePears(), initializeWdk()]);
+}
+
+async function loadState() {
+  try {
+    const snapshot = JSON.parse(await readFile(stateFile, "utf8"));
+    runtime.rooms = new Map(snapshot.rooms || []);
+    runtime.messages = new Map(snapshot.messages || []);
+    runtime.memberships = new Map((snapshot.memberships || []).map(([id, rooms]) => [id, new Set(rooms)]));
+    runtime.points = new Map(snapshot.points || []);
+    runtime.walletLedger = snapshot.walletLedger || [];
+  } catch {}
+}
+
+async function saveState() {
+  const snapshot = {
+    rooms: [...runtime.rooms.entries()],
+    messages: [...runtime.messages.entries()],
+    memberships: [...runtime.memberships.entries()].map(([id, rooms]) => [id, [...rooms]]),
+    points: [...runtime.points.entries()],
+    walletLedger: runtime.walletLedger.slice(-100)
+  };
+  await writeFile(stateFile, JSON.stringify(snapshot, null, 2)).catch(() => {});
 }
 
 async function initializePears() {
@@ -254,6 +278,13 @@ function fanProfile(memberId) {
   };
 }
 
+function leaderboard() {
+  return [...runtime.points.entries()]
+    .map(([memberId, profile]) => ({ memberId, points: profile.total }))
+    .sort((a, b) => b.points - a.points)
+    .slice(0, 10);
+}
+
 function assistantAnswer(prompt, context = {}) {
   const normalized = text(prompt).toLowerCase();
   const roomCode = context.roomCode || "this room";
@@ -421,6 +452,32 @@ async function handleApi(request, response, pathname) {
     return json(response, 200, fanProfile(url.searchParams.get("memberId")));
   }
 
+  if (pathname === "/api/leaderboard" && request.method === "GET") {
+    return json(response, 200, { leaderboard: leaderboard() });
+  }
+
+  if (pathname === "/api/tips" && request.method === "GET") {
+    return json(response, 200, { tips: runtime.walletLedger.slice(-20).reverse() });
+  }
+
+  if (pathname === "/api/wallet/export" && request.method === "GET") {
+    const seed = process.env.MATCHMESH_WALLET_SEED?.trim() || "";
+    return json(response, 200, {
+      network: process.env.MATCHMESH_WALLET_CHAIN?.trim() || "solana",
+      recoveryPhrase: seed,
+      warning: "Development export only. Never expose a production seed phrase in a browser."
+    });
+  }
+
+  if (pathname === "/api/wallet/import" && request.method === "POST") {
+    const body = await readBody(request);
+    return json(response, 202, {
+      status: "import-recorded",
+      phraseLength: text(body.recoveryPhrase).split(" ").filter(Boolean).length,
+      warning: "Production import should use encrypted local storage or a secure wallet adapter."
+    });
+  }
+
   if (pathname === "/api/rooms" && request.method === "GET") {
     return json(response, 200, { rooms: [...runtime.rooms.values()] });
   }
@@ -450,6 +507,7 @@ async function handleApi(request, response, pathname) {
       createdAt: room.createdAt
     });
     if (runtime.roomLog) await runtime.roomLog.append({ type: "room.created", room });
+    await saveState();
     return json(response, 201, { ...room, points });
   }
 
@@ -477,6 +535,7 @@ async function handleApi(request, response, pathname) {
     const points = isNewMembership
       ? awardPoints(memberId, 5, "Joined a room")
       : { total: runtime.points.get(memberId)?.total || 0, events: runtime.points.get(memberId)?.events || [] };
+    await saveState();
     return json(response, 200, { ...room, points });
   }
 
@@ -504,6 +563,7 @@ async function handleApi(request, response, pathname) {
     roomMessages(inviteCode).push(message);
     const points = awardPoints(memberId, 2, "Sent a room message");
     if (runtime.roomLog) await runtime.roomLog.append({ type: "chat.message.appended", inviteCode, message });
+    await saveState();
     return json(response, 201, { ...message, points });
   }
 
@@ -555,6 +615,7 @@ async function handleApi(request, response, pathname) {
     };
     runtime.walletLedger.push(intent);
     const points = awardPoints(memberId, 3, "Sent a tip intent");
+    await saveState();
     return json(response, 202, {
       ...intent,
       points,

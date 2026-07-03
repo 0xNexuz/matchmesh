@@ -652,6 +652,84 @@ input {
   margin: 14px 0 0;
 }
 
+.receive-card {
+  display: grid;
+  grid-template-columns: 74px 1fr;
+  gap: 12px;
+  align-items: center;
+  margin: 0 0 14px;
+  padding: 10px;
+  border: 1px solid rgba(247, 244, 236, 0.12);
+  border-radius: 12px;
+  background: rgba(247, 244, 236, 0.055);
+}
+
+.receive-card img {
+  width: 74px;
+  height: 74px;
+  border-radius: 8px;
+}
+
+.receive-card span,
+.wallet-panel small {
+  display: block;
+  color: #b8c5be;
+}
+
+.wallet-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.wallet-actions button {
+  min-height: 38px;
+  border: 1px solid rgba(247, 244, 236, 0.12);
+  border-radius: 999px;
+  background: rgba(247, 244, 236, 0.06);
+  color: var(--paper);
+  font-weight: 850;
+}
+
+.wallet-panel input {
+  margin-top: 10px;
+}
+
+.activity-grid {
+  max-width: 1180px;
+  margin: 18px auto 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.activity-grid section {
+  min-height: 220px;
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--paper);
+}
+
+.activity-grid article {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.activity-grid article:last-of-type {
+  border-bottom: 0;
+}
+
+.activity-grid span {
+  color: var(--muted);
+  text-align: right;
+}
+
 .feature-grid,
 .stack-grid {
   max-width: 1180px;
@@ -803,6 +881,7 @@ li::before {
   .feature-grid,
   .stack-grid,
   .fixtures-list,
+  .activity-grid,
   .workflow {
     grid-template-columns: 1fr;
   }
