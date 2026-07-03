@@ -6,7 +6,9 @@ const hopByHopHeaders = new Set([
   "te",
   "trailer",
   "transfer-encoding",
-  "upgrade"
+  "upgrade",
+  "content-encoding",
+  "content-length"
 ]);
 
 function nativeApiBase() {
@@ -38,8 +40,10 @@ async function proxyToNative(request, response, url) {
     if (!hopByHopHeaders.has(key.toLowerCase())) responseHeaders[key] = value;
   });
   responseHeaders["x-matchmesh-native-proxy"] = "1";
+  const payload = await nativeResponse.text();
+  responseHeaders["content-length"] = Buffer.byteLength(payload).toString();
   response.writeHead(nativeResponse.status, responseHeaders);
-  response.end(Buffer.from(await nativeResponse.arrayBuffer()));
+  response.end(payload);
 }
 
 export default async function handler(request, response) {
