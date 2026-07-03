@@ -29,6 +29,7 @@ import {
   getFanProfile,
   getFixtures,
   getLeaderboard,
+  getMemberId,
   getMatchState,
   getRoomMessages,
   getRuntimeStatus,
@@ -273,7 +274,7 @@ function App() {
     if (!text) return;
     try {
       const message = await sendChatMessage(roomCode, {
-        memberId: "local-fan",
+        memberId: getMemberId(),
         name: "You",
         team: "ROOM",
         text,

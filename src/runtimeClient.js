@@ -18,6 +18,20 @@ async function request(path, options) {
   return payload;
 }
 
+export function getMemberId() {
+  if (typeof window === "undefined") return "local-fan";
+  const override = new URLSearchParams(window.location.search).get("member");
+  if (override) {
+    window.localStorage.setItem("matchmesh-member-id", override);
+    return override;
+  }
+  const existing = window.localStorage.getItem("matchmesh-member-id");
+  if (existing) return existing;
+  const generated = `fan-${crypto.randomUUID().slice(0, 8)}`;
+  window.localStorage.setItem("matchmesh-member-id", generated);
+  return generated;
+}
+
 export async function getRuntimeStatus() {
   try {
     return await request("/api/status");
@@ -38,19 +52,19 @@ export function getMatchState(fixtureId) {
 export function createRoom(name) {
   return request("/api/rooms", {
     method: "POST",
-    body: JSON.stringify({ name, memberId: "local-fan" })
+    body: JSON.stringify({ name, memberId: getMemberId() })
   });
 }
 
 export function joinRoom(inviteCode) {
   return request("/api/rooms/join", {
     method: "POST",
-    body: JSON.stringify({ inviteCode, memberId: "local-fan" })
+    body: JSON.stringify({ inviteCode, memberId: getMemberId() })
   });
 }
 
 export function getFanProfile() {
-  return request("/api/profile?memberId=local-fan");
+  return request(`/api/profile?memberId=${encodeURIComponent(getMemberId())}`);
 }
 
 export function getLeaderboard() {
@@ -97,6 +111,6 @@ export function sendChatMessage(roomCode, message) {
 export function sendWalletTip(amount, recipient) {
   return request("/api/wallet/tip", {
     method: "POST",
-    body: JSON.stringify({ amount, recipient, memberId: "local-fan" })
+    body: JSON.stringify({ amount, recipient, memberId: getMemberId() })
   });
 }
