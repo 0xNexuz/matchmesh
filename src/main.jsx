@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
+import QRCode from "qrcode";
 import {
   Bot,
   Check,
@@ -29,6 +30,7 @@ import {
   getRoomMessages,
   getRuntimeStatus,
   getRecentTips,
+  getWalletStatus,
   importWallet,
   joinRoom,
   requestAiCompletion,
@@ -107,21 +109,6 @@ function extractInviteCode(value) {
   return (value || "").toUpperCase().match(/MESH-[A-F0-9]{4}/u)?.[0] || "";
 }
 
-function qrSvgData(value) {
-  const cells = 21;
-  let hash = 0;
-  for (const char of value) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
-  const rects = [];
-  for (let y = 0; y < cells; y += 1) {
-    for (let x = 0; x < cells; x += 1) {
-      const finder = (x < 7 && y < 7) || (x > 13 && y < 7) || (x < 7 && y > 13);
-      const bit = finder || (((hash + x * 17 + y * 31 + x * y) % 7) < 3);
-      if (bit) rects.push(`<rect x="${x}" y="${y}" width="1" height="1"/>`);
-    }
-  }
-  return `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${cells} ${cells}"><rect width="${cells}" height="${cells}" fill="#fffdf7"/><g fill="#101613">${rects.join("")}</g></svg>`)}`;
-}
-
 function App() {
   const [roomCode, setRoomCode] = useState("MESH-90");
   const [activePrompt, setActivePrompt] = useState(prompts[0]);
@@ -138,6 +125,8 @@ function App() {
   const [pointEvents, setPointEvents] = useState([]);
   const [leaderboard, setLeaderboard] = useState([]);
   const [recentTips, setRecentTips] = useState([]);
+  const [walletInfo, setWalletInfo] = useState(null);
+  const [receiveQr, setReceiveQr] = useState("");
   const [walletExport, setWalletExport] = useState(null);
   const [importPhrase, setImportPhrase] = useState("");
   const [fixturesState, setFixturesState] = useState({
@@ -167,8 +156,21 @@ function App() {
           updatedAt: new Date().toISOString()
         });
       });
+    getWalletStatus().then(setWalletInfo).catch(() => {});
     refreshProfile();
   }, []);
+
+  useEffect(() => {
+    const receiveTarget = walletInfo?.receiveTarget || `matchmesh:room:${roomCode}:USDt`;
+    QRCode.toDataURL(receiveTarget, {
+      margin: 1,
+      width: 144,
+      color: {
+        dark: "#101613",
+        light: "#fffdf7"
+      }
+    }).then(setReceiveQr).catch(() => setReceiveQr(""));
+  }, [roomCode, walletInfo]);
 
   async function refreshProfile() {
     try {
@@ -473,10 +475,10 @@ function App() {
                 <strong>{walletBalance.toFixed(2)} USDt</strong>
               </div>
               <div className="receive-card">
-                <img src={qrSvgData(runtimeStatus?.wdk?.mode || "matchmesh-wallet")} alt="Receive QR" />
+                {receiveQr && <img src={receiveQr} alt="Receive USDt QR" />}
                 <div>
-                  <span>Receive on {runtimeStatus?.wdk?.mode === "@tetherto/wdk" ? "Solana devnet" : "policy ledger"}</span>
-                  <code>{runtimeStatus?.wdk?.mode || "wallet"}</code>
+                  <span>Receive {walletInfo?.asset || "USDt"} on {walletInfo?.network || "Solana devnet"}</span>
+                  <code>{walletInfo?.accountAddress || walletInfo?.receiveTarget || "wallet pending"}</code>
                 </div>
               </div>
               <button className="button primary full" onClick={handleTip}><CircleDollarSign size={18} /> Send 2.50 USDt tip</button>

@@ -676,6 +676,14 @@ input {
   color: #b8c5be;
 }
 
+.receive-card code {
+  display: block;
+  max-width: 100%;
+  margin-top: 6px;
+  overflow-wrap: anywhere;
+  color: var(--paper);
+}
+
 .wallet-actions {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

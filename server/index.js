@@ -285,6 +285,31 @@ function leaderboard() {
     .slice(0, 10);
 }
 
+async function walletAccountAddress() {
+  const walletChain = process.env.MATCHMESH_WALLET_CHAIN?.trim();
+  if (!runtime.wdk || !walletChain) return null;
+  const account = await runtime.wdk.getAccount(walletChain, 0);
+  return account.getAddress();
+}
+
+async function walletStatusPayload() {
+  const network = process.env.MATCHMESH_WALLET_CHAIN?.trim() || "solana-devnet";
+  let accountAddress = null;
+  try {
+    accountAddress = await walletAccountAddress();
+  } catch {}
+  const receiveTarget = accountAddress
+    ? `${network}:${accountAddress}?asset=USDt`
+    : `matchmesh:${network}:policy-ledger`;
+  return {
+    ...runtime.wdkStatus,
+    network,
+    asset: "USDt",
+    accountAddress,
+    receiveTarget
+  };
+}
+
 function assistantAnswer(prompt, context = {}) {
   const normalized = text(prompt).toLowerCase();
   const roomCode = context.roomCode || "this room";
@@ -579,7 +604,7 @@ async function handleApi(request, response, pathname) {
   }
 
   if (pathname === "/api/wallet/status") {
-    return json(response, 200, runtime.wdkStatus);
+    return json(response, 200, await walletStatusPayload());
   }
 
   if (pathname === "/api/wallet/tip" && request.method === "POST") {
@@ -597,12 +622,7 @@ async function handleApi(request, response, pathname) {
       return json(response, 400, { error: "Tip amount must be between 0 and 100 USDt" });
     }
     if (!recipient) return json(response, 400, { error: "Recipient is required" });
-    let accountAddress = null;
-    const walletChain = process.env.MATCHMESH_WALLET_CHAIN?.trim();
-    if (runtime.wdk && walletChain) {
-      const account = await runtime.wdk.getAccount(walletChain, 0);
-      accountAddress = await account.getAddress();
-    }
+    const accountAddress = await walletAccountAddress().catch(() => null);
     const intent = {
       id: `tip_${randomBytes(8).toString("hex")}`,
       intent: "tip",

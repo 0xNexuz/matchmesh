@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { after, before, test } from "node:test";
+import { rm } from "node:fs/promises";
 
 let baseUrl;
 let server;
@@ -8,6 +9,7 @@ before(async () => {
   process.env.NODE_ENV = "test";
   process.env.MATCHMESH_DATA_DIR = ".matchmesh-data-test";
   process.env.MATCHMESH_WALLET_SEED = "";
+  await rm(process.env.MATCHMESH_DATA_DIR, { recursive: true, force: true });
   ({ server } = await import("../server/index.js"));
   await new Promise((resolve) => {
     server.listen(0, "127.0.0.1", resolve);
@@ -127,6 +129,11 @@ test("assistant and wallet endpoints return operational responses", async () => 
   const walletExport = await request("/api/wallet/export");
   assert.equal(walletExport.response.status, 200);
   assert.ok("recoveryPhrase" in walletExport.body);
+
+  const walletStatus = await request("/api/wallet/status");
+  assert.equal(walletStatus.response.status, 200);
+  assert.equal(walletStatus.body.asset, "USDt");
+  assert.ok(walletStatus.body.receiveTarget);
 });
 
 test("invalid payloads are rejected", async () => {

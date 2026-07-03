@@ -56,6 +56,10 @@ export function getRecentTips() {
   return request("/api/tips");
 }
 
+export function getWalletStatus() {
+  return request("/api/wallet/status");
+}
+
 export function exportWallet() {
   return request("/api/wallet/export");
 }
