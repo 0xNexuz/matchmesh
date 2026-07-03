@@ -313,8 +313,16 @@ async function walletAccountAddress() {
 async function walletStatusPayload() {
   const network = process.env.MATCHMESH_WALLET_CHAIN?.trim() || "solana-devnet";
   let accountAddress = null;
+  let nativeBalanceLamports = null;
+  let tokenBalance = null;
   try {
     accountAddress = await walletAccountAddress();
+    if (runtime.wdk) {
+      const account = await runtime.wdk.getAccount(process.env.MATCHMESH_WALLET_CHAIN?.trim() || "solana", 0);
+      nativeBalanceLamports = (await account.getBalance()).toString();
+      const token = process.env.MATCHMESH_USDT_MINT || process.env.MATCHMESH_TOKEN_MINT;
+      if (token) tokenBalance = (await account.getTokenBalance(token)).toString();
+    }
   } catch {}
   const receiveTarget = accountAddress
     ? `${network}:${accountAddress}?asset=USDt`
@@ -324,7 +332,10 @@ async function walletStatusPayload() {
     network,
     asset: "USDt",
     accountAddress,
-    receiveTarget
+    receiveTarget,
+    nativeBalanceLamports,
+    tokenBalance,
+    tokenMint: process.env.MATCHMESH_USDT_MINT || process.env.MATCHMESH_TOKEN_MINT || null
   };
 }
 
@@ -334,7 +345,31 @@ async function tryNativeWalletTransfer({ recipient, amount }) {
   if (!runtime.wdk) return { status: "recorded-policy-ledger", accountAddress: null };
   const account = await runtime.wdk.getAccount(walletChain, 0);
   const accountAddress = await account.getAddress();
-  if (!token || !/^[1-9A-HJ-NP-Za-km-z]{32,44}$/u.test(recipient)) {
+  const validSolanaRecipient = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/u.test(recipient);
+  if (token && validSolanaRecipient) {
+    const decimals = Number(process.env.MATCHMESH_USDT_DECIMALS || 6);
+    const units = BigInt(Math.round(amount * 10 ** decimals));
+    const result = await account.transfer({ token, recipient, amount: units });
+    return {
+      status: "submitted-on-chain",
+      accountAddress,
+      txHash: result.hash,
+      fee: result.fee?.toString?.() || result.fee
+    };
+  }
+  if (!token && validSolanaRecipient && typeof account.sendTransaction === "function") {
+    const lamportsPerUsdt = BigInt(process.env.MATCHMESH_SOL_LAMPORTS_PER_USDT || "1000000");
+    const lamports = BigInt(Math.max(1, Math.round(amount * Number(lamportsPerUsdt))));
+    const result = await account.sendTransaction({ to: recipient, value: lamports });
+    return {
+      status: "submitted-devnet-sol",
+      accountAddress,
+      txHash: result.hash,
+      fee: result.fee?.toString?.() || result.fee,
+      note: "No MATCHMESH_USDT_MINT is configured, so this devnet transfer moved SOL as the live on-chain proof."
+    };
+  }
+  if (!validSolanaRecipient) {
     const signature = typeof account.sign === "function"
       ? await account.sign(`MatchMesh transfer receipt: ${amount.toFixed(2)} USDt to ${recipient}`)
       : null;
@@ -342,18 +377,10 @@ async function tryNativeWalletTransfer({ recipient, amount }) {
       status: "signed-wallet-receipt",
       accountAddress,
       signature,
-      note: "Set MATCHMESH_USDT_MINT and use a valid Solana address for on-chain token transfer."
+      note: "Use a valid Solana address for live on-chain transfer."
     };
   }
-  const decimals = Number(process.env.MATCHMESH_USDT_DECIMALS || 6);
-  const units = BigInt(Math.round(amount * 10 ** decimals));
-  const result = await account.transfer({ token, recipient, amount: units });
-  return {
-    status: "submitted-on-chain",
-    accountAddress,
-    txHash: result.hash,
-    fee: result.fee?.toString?.() || result.fee
-  };
+  return { status: "wallet-execution-pending", accountAddress };
 }
 
 async function createWalletTransfer(body, intent = "transfer") {

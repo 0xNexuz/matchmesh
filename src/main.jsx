@@ -395,7 +395,7 @@ function App() {
         )));
       }
       if (result.points) setFanPoints(result.points.total);
-      setWalletState(result.txHash ? `Sent on-chain: ${result.txHash.slice(0, 10)}...` : `${result.amount} ${result.asset} ${result.status}`);
+      setWalletState(result.txHash ? `On-chain receipt: ${result.txHash.slice(0, 10)}...` : `${result.amount} ${result.asset} ${result.status}`);
       await refreshProfile();
     } catch (error) {
       setWalletState(error.payload?.error || error.message);
@@ -852,7 +852,7 @@ function App() {
                   </label>
 
                   <div className="network-pill">
-                    <Radio size={16} /> {walletInfo?.network || "solana"} / {walletInfo?.asset || "USDT"}
+                    <Radio size={16} /> {walletInfo?.network || "solana"} / {walletInfo?.tokenMint ? walletInfo.asset : "devnet SOL proof"}
                   </div>
 
                   {walletPockets.length > 1 && (
