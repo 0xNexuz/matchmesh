@@ -367,6 +367,21 @@ function fallbackFixtures() {
   };
 }
 
+function fixturePriority(fixture) {
+  const status = text(fixture.status).toUpperCase();
+  if (/LIVE|IN_PLAY|FIRST|SECOND|HALF|EXTRA|PENALT/u.test(status)) return 0;
+  if (/TIMED|SCHEDULED|POSTPONED/u.test(status)) return 1;
+  return 2;
+}
+
+function sortFixtures(fixtures = []) {
+  return [...fixtures].sort((a, b) => {
+    const priority = fixturePriority(a) - fixturePriority(b);
+    if (priority) return priority;
+    return new Date(a.kickoff || 0) - new Date(b.kickoff || 0);
+  });
+}
+
 function fallbackMatchState(fixture = {}) {
   const home = fixture.home || "Ghana";
   const away = fixture.away || "England";
@@ -606,7 +621,7 @@ async function fetchApiFootballFixtures() {
   return {
     provider: "api-football",
     updatedAt: new Date().toISOString(),
-    fixtures: (payload.response || []).slice(0, 12).map((item) => ({
+    fixtures: sortFixtures((payload.response || []).slice(0, 12).map((item) => ({
       id: String(item.fixture?.id),
       competition: item.league?.name || "Fixture",
       home: item.teams?.home?.name || "Home",
@@ -615,7 +630,7 @@ async function fetchApiFootballFixtures() {
       elapsed: item.fixture?.status?.elapsed,
       status: item.fixture?.status?.long || "Scheduled",
       score: item.goals?.home == null ? null : `${item.goals.home} - ${item.goals.away}`
-    }))
+    })))
   };
 }
 
@@ -627,7 +642,7 @@ async function fetchApiFootballLiveFixtures() {
   });
   if (!response.ok) throw new Error(`API-Football live returned ${response.status}`);
   const payload = await response.json();
-  const fixtures = (payload.response || [])
+  const fixtures = sortFixtures((payload.response || [])
     .filter((item) => String(item.league?.id) === "1" && String(item.league?.season) === "2026")
     .map((item) => ({
       id: String(item.fixture?.id),
@@ -639,7 +654,7 @@ async function fetchApiFootballLiveFixtures() {
       status: item.fixture?.status?.long || "Live",
       score: item.goals?.home == null ? null : `${item.goals.home} - ${item.goals.away}`,
       events: item.events || []
-    }));
+    })));
   return {
     provider: "api-football-live",
     updatedAt: new Date().toISOString(),
@@ -661,7 +676,7 @@ async function fetchFootballDataFixtures() {
   return {
     provider: "football-data.org",
     updatedAt: new Date().toISOString(),
-    fixtures: (payload.matches || []).slice(0, 12).map((item) => ({
+    fixtures: sortFixtures((payload.matches || []).slice(0, 12).map((item) => ({
       id: String(item.id),
       competition: item.competition?.name || "Fixture",
       home: item.homeTeam?.name || "Home",
@@ -669,7 +684,7 @@ async function fetchFootballDataFixtures() {
       kickoff: item.utcDate,
       status: item.status || "Scheduled",
       score: item.score?.fullTime?.home == null ? null : `${item.score.fullTime.home} - ${item.score.fullTime.away}`
-    }))
+    })))
   };
 }
 
@@ -705,7 +720,8 @@ async function getMatchState(fixtureId) {
     return runtime.matchStateCache.payload;
   }
   const fixtures = await getFixtures();
-  const fixture = fixtures.fixtures.find((item) => String(item.id) === String(fixtureId)) || fixtures.fixtures[0] || {};
+  const sorted = sortFixtures(fixtures.fixtures);
+  const fixture = sorted.find((item) => String(item.id) === String(fixtureId)) || sorted[0] || {};
   let payload;
   try {
     payload = await fetchApiFootballMatchState(fixture);

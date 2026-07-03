@@ -264,12 +264,28 @@ function App() {
 
   useEffect(() => {
     if (!/^MESH-[A-F0-9]{4}$/u.test(roomCode)) return;
-    getRoomMessages(roomCode)
-      .then((result) => {
-        if (result.messages?.length) setRoomMessages(result.messages);
-      })
-      .catch(() => {});
+    let active = true;
+    async function refreshMessages() {
+      try {
+        const result = await getRoomMessages(roomCode);
+        if (active) setRoomMessages(result.messages || []);
+      } catch {}
+    }
+    refreshMessages();
+    const timer = window.setInterval(refreshMessages, 2500);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
   }, [roomCode]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      refreshProfile();
+      getMatchState().then(setMatchState).catch(() => {});
+    }, 15000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     if (selectedPocket === transferTarget) {
@@ -603,7 +619,7 @@ function App() {
                 <div className="field-action-board" aria-label="Current player actions">
                   <div>
                     <strong>Live actions</strong>
-                    <span>{matchState.provider || "provider-ready"}</span>
+                    <span>{matchState.provider === "curated-fallback" ? "provider fallback" : matchState.provider || "provider-ready"}</span>
                   </div>
                   {(matchState.actions || []).slice(0, 4).map((action) => (
                     <article key={`${action.minute}-${action.player}`}>

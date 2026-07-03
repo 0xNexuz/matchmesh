@@ -16,7 +16,14 @@ function nativeApiBase() {
 }
 
 function shouldProxyToNative(pathname) {
-  return Boolean(nativeApiBase()) && pathname.startsWith("/api/wallet/");
+  if (!nativeApiBase()) return false;
+  return [
+    "/api/wallet/",
+    "/api/rooms",
+    "/api/profile",
+    "/api/leaderboard",
+    "/api/tips"
+  ].some((prefix) => pathname === prefix || pathname.startsWith(prefix));
 }
 
 async function bodyBuffer(request) {
