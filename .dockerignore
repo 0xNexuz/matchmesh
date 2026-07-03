@@ -1,0 +1,8 @@
+node_modules
+dist
+.env
+.vercel
+.git
+.matchmesh-data*
+*.log
+*.err

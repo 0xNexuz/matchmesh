@@ -1,0 +1,32 @@
+services:
+  - type: web
+    name: matchmesh-native
+    runtime: docker
+    plan: free
+    autoDeploy: true
+    healthCheckPath: /api/health
+    envVars:
+      - key: PORT
+        value: 4173
+      - key: MATCHMESH_DATA_DIR
+        value: /var/data/matchmesh
+      - key: MATCHMESH_ENABLE_P2P
+        value: "0"
+      - key: MATCHMESH_WALLET_CHAIN
+        value: solana
+      - key: MATCHMESH_SOLANA_RPC_URL
+        value: https://api.devnet.solana.com
+      - key: MATCHMESH_SOLANA_COMMITMENT
+        value: confirmed
+      - key: MATCHMESH_FIXTURES_TIMEZONE
+        value: Africa/Lagos
+      - key: MATCHMESH_FOOTBALL_DATA_COMPETITION
+        value: WC
+      - key: MATCHMESH_WALLET_SEED
+        sync: false
+      - key: FOOTBALL_DATA_TOKEN
+        sync: false
+    disk:
+      name: matchmesh-data
+      mountPath: /var/data
+      sizeGB: 1

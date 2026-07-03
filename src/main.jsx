@@ -7,6 +7,7 @@ import {
   ChevronRight,
   CircleDollarSign,
   Copy,
+  Info,
   KeyRound,
   Lock,
   MessageSquare,
@@ -15,6 +16,7 @@ import {
   Send,
   ShieldCheck,
   Sparkles,
+  Star,
   Trophy,
   Users,
   Wallet,
@@ -129,6 +131,9 @@ function App() {
   const [receiveQr, setReceiveQr] = useState("");
   const [walletExport, setWalletExport] = useState(null);
   const [importPhrase, setImportPhrase] = useState("");
+  const [recoveryOpen, setRecoveryOpen] = useState(false);
+  const [sendAmount, setSendAmount] = useState("25.00");
+  const [tipRecipient, setTipRecipient] = useState("room-top-commentator");
   const [fixturesState, setFixturesState] = useState({
     provider: "loading",
     fixtures: [],
@@ -239,9 +244,9 @@ function App() {
     }
   }
 
-  async function handleTip() {
+  async function handleTip(amount = "2.50", recipient = "room-top-commentator") {
     try {
-      const result = await sendWalletTip("2.50", "room-top-commentator");
+      const result = await sendWalletTip(amount, recipient);
       setWalletBalance((balance) => Math.max(0, Number((balance - Number(result.amount)).toFixed(2))));
       if (result.points) setFanPoints(result.points.total);
       setWalletState(`${result.asset} ${result.amount} ${result.status}`);
@@ -469,31 +474,168 @@ function App() {
             </section>
 
             <section className="wallet-panel">
-              <h3>Wallet</h3>
-              <div className="balance">
-                <span>Balance</span>
-                <strong>{walletBalance.toFixed(2)} USDt</strong>
-              </div>
-              <div className="receive-card">
-                {receiveQr && <img src={receiveQr} alt="Receive USDt QR" />}
-                <div>
-                  <span>Receive {walletInfo?.asset || "USDt"} on {walletInfo?.network || "Solana devnet"}</span>
-                  <code>{walletInfo?.accountAddress || walletInfo?.receiveTarget || "wallet pending"}</code>
+              <div className="wallet-dashboard">
+                <div className="wallet-stack">
+                  <div className="wallet-hero-card">
+                    <div>
+                      <img src={logo} alt="MatchMesh" />
+                      <span>Wallet</span>
+                    </div>
+                    <small>SELF-CUSTODIAL</small>
+                    <strong>{walletBalance.toFixed(2)} <span>USDT</span></strong>
+                    <em>approx ${walletBalance.toFixed(2)}</em>
+                    <ShieldCheck className="wallet-mark" size={82} aria-hidden="true" />
+                  </div>
+
+                  <div className="wallet-pocket active">
+                    <div>
+                      <span>Spending</span>
+                      <strong>250.00 USDT</strong>
+                    </div>
+                    <CircleDollarSign size={18} />
+                  </div>
+                  <div className="wallet-pocket">
+                    <div>
+                      <span>Watch Party Pool</span>
+                      <strong>450.00 USDT</strong>
+                    </div>
+                    <Users size={18} />
+                  </div>
+                  <div className="wallet-pocket">
+                    <div>
+                      <span>Creator Tips</span>
+                      <strong>300.75 USDT</strong>
+                    </div>
+                    <Star size={18} />
+                  </div>
+                </div>
+
+                <div className="send-sheet" aria-label="Send USDT">
+                  <div className="sheet-head">
+                    <h3>Send USDT</h3>
+                    <span><Lock size={14} /> {runtimeStatus?.wdk?.mode || "wallet"}</span>
+                  </div>
+
+                  <label>
+                    From
+                    <div className="wallet-field read-only">
+                      <span>Spending</span>
+                      <strong>250.00 USDT</strong>
+                    </div>
+                  </label>
+
+                  <label>
+                    To
+                    <div className="wallet-field">
+                      <input
+                        value={tipRecipient}
+                        onChange={(event) => setTipRecipient(event.target.value)}
+                        aria-label="Tip recipient"
+                      />
+                      <Copy size={16} />
+                    </div>
+                  </label>
+
+                  <label>
+                    Amount
+                    <div className="amount-field">
+                      <input
+                        value={sendAmount}
+                        onChange={(event) => setSendAmount(event.target.value)}
+                        inputMode="decimal"
+                        aria-label="USDT amount"
+                      />
+                      <strong>USDT</strong>
+                    </div>
+                  </label>
+
+                  <div className="quick-amounts" aria-label="Quick amount">
+                    {["5.00", "10.00", "25.00", "50.00"].map((amount) => (
+                      <button
+                        key={amount}
+                        className={sendAmount === amount ? "active" : ""}
+                        onClick={() => setSendAmount(amount)}
+                      >
+                        ${Number(amount).toFixed(0)}
+                      </button>
+                    ))}
+                    <button onClick={() => setSendAmount("100.00")}>Max</button>
+                  </div>
+
+                  <label>
+                    Note
+                    <textarea defaultValue="Great commentary tonight!" maxLength={64} aria-label="Payment note" />
+                  </label>
+
+                  <div className="network-pill">
+                    <Radio size={16} /> {walletInfo?.network || "solana"} / {walletInfo?.asset || "USDT"}
+                  </div>
+
+                  <button className="button primary full" onClick={() => handleTip(sendAmount, tipRecipient)}>
+                    <CircleDollarSign size={18} /> Review payment
+                  </button>
+                  <p><KeyRound size={15} /> {walletState}</p>
+                </div>
+
+                <div className="receive-stack">
+                  <div className="payment-request">
+                    <div className="payment-head">
+                      <h3>Payment request</h3>
+                      <Info size={16} />
+                    </div>
+                    <span>Scan to pay</span>
+                    <strong>{sendAmount || "25.00"} USDT</strong>
+                    <div className="receive-qr">
+                      {receiveQr && <img src={receiveQr} alt="Receive USDT QR" />}
+                      <CircleDollarSign size={34} />
+                    </div>
+                    <div className="address-chip">
+                      <span>Address</span>
+                      <code>{walletInfo?.accountAddress || walletInfo?.receiveTarget || "wallet pending"}</code>
+                      <Copy size={15} />
+                    </div>
+                  </div>
+
+                  <div className="recent-wallet-tips">
+                    <div>
+                      <h3>Recent fan tips</h3>
+                      <a href="#product">View all</a>
+                    </div>
+                    {recentTips.slice(0, 4).map((tip) => (
+                      <article key={tip.id}>
+                        <span>{tip.recipient.slice(0, 16)}</span>
+                        <strong>{tip.amount} {tip.asset}</strong>
+                        <small>{tip.status}</small>
+                      </article>
+                    ))}
+                    {!recentTips.length && <p>No tips yet.</p>}
+                  </div>
+
+                  <button
+                    className="recovery-toggle"
+                    type="button"
+                    onClick={() => setRecoveryOpen((open) => !open)}
+                    aria-expanded={recoveryOpen}
+                  >
+                    <KeyRound size={16} /> Recovery options
+                  </button>
+                  {recoveryOpen && (
+                    <div className="recovery-panel">
+                      <div className="wallet-actions">
+                        <button onClick={async () => setWalletExport(await exportWallet())}>Export</button>
+                        <button onClick={async () => setWalletState((await importWallet(importPhrase)).status)}>Import</button>
+                      </div>
+                      <input
+                        value={importPhrase}
+                        onChange={(event) => setImportPhrase(event.target.value)}
+                        placeholder="Paste recovery phrase"
+                        aria-label="Recovery phrase"
+                      />
+                      {walletExport?.recoveryPhrase && <small>Recovery phrase ready. Keep it private.</small>}
+                    </div>
+                  )}
                 </div>
               </div>
-              <button className="button primary full" onClick={handleTip}><CircleDollarSign size={18} /> Send 2.50 USDt tip</button>
-              <p><KeyRound size={15} /> {walletState}</p>
-              <div className="wallet-actions">
-                <button onClick={async () => setWalletExport(await exportWallet())}>Export</button>
-                <button onClick={async () => setWalletState((await importWallet(importPhrase)).status)}>Import</button>
-              </div>
-              <input
-                value={importPhrase}
-                onChange={(event) => setImportPhrase(event.target.value)}
-                placeholder="Paste recovery phrase"
-                aria-label="Recovery phrase"
-              />
-              {walletExport?.recoveryPhrase && <small>Recovery phrase ready. Keep it private.</small>}
             </section>
           </div>
         </div>

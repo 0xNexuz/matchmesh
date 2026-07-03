@@ -32,6 +32,7 @@ npm start
 - `MATCHMESH_ENABLE_P2P=1` enables Hyperswarm discovery for Pears Stack room sync.
 - `MATCHMESH_WALLET_SEED` creates a WDK instance from a self-custody seed phrase.
 - `MATCHMESH_WALLET_CHAIN=solana` and `MATCHMESH_SOLANA_RPC_URL=https://api.devnet.solana.com` register the Solana wallet module.
+- `MATCHMESH_NATIVE_API_BASE` lets the Vercel API proxy wallet endpoints to a native Node backend. Set it on Vercel after deploying the native service.
 - `APISPORTS_KEY` or `API_FOOTBALL_KEY` enables API-Football World Cup fixtures.
 - `FOOTBALL_DATA_TOKEN` enables football-data.org World Cup fixtures when API-Football is not configured.
 - `MATCHMESH_FIXTURES_TIMEZONE`, `MATCHMESH_FIXTURES_DATE`, and `MATCHMESH_FIXTURES_CACHE_MS` tune fixture requests.
@@ -72,6 +73,20 @@ npm run check
 ```
 
 On Windows, stop any running Vite or MatchMesh node processes before reinstalling native modules, because packages such as `fs-native-extensions` can stay locked by active Node processes.
+
+## Native Wallet Backend
+
+Vercel is good for the public app, but WDK native wallet modules need a normal Node runtime. Deploy the same repo as a Docker web service on a native-friendly host, then point Vercel wallet traffic to it.
+
+1. Deploy this repo with `Dockerfile` or the included `render.yaml`.
+2. Set native backend env vars:
+   - `MATCHMESH_WALLET_SEED` to a devnet-only mnemonic for testing, or a production seed created outside the repo.
+   - `MATCHMESH_WALLET_CHAIN=solana`
+   - `MATCHMESH_SOLANA_RPC_URL=https://api.devnet.solana.com` for devnet, or a dedicated RPC for production.
+   - `FOOTBALL_DATA_TOKEN` if the native backend should also serve fixture data.
+3. Check `https://<native-backend>/api/wallet/status`. A working native wallet returns `mode: "@tetherto/wdk"` and an `accountAddress`.
+4. Set `MATCHMESH_NATIVE_API_BASE=https://<native-backend>` on Vercel and redeploy.
+5. Recheck `https://matchmesh.vercel.app/api/wallet/status`. It should include `x-matchmesh-native-proxy: 1` and the native wallet receive target.
 
 ## Build
 
