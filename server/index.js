@@ -370,27 +370,33 @@ function fallbackFixtures() {
 function fallbackMatchState(fixture = {}) {
   const home = fixture.home || "Ghana";
   const away = fixture.away || "England";
+  const homeCode = teamCode(home);
+  const awayCode = teamCode(away);
+  const clock = fixture.elapsed ? `${fixture.elapsed}'` : fixture.status === "FINISHED" ? "FT" : fixture.status === "IN_PLAY" ? "Live" : "Kickoff";
   return {
     provider: "curated-fallback",
     fixtureId: fixture.id || "fallback",
     updatedAt: new Date().toISOString(),
-    score: fixture.score || "1 - 1",
-    clock: "68'",
+    score: fixture.score || "0 - 0",
+    clock,
     teams: { home, away },
     players: [
-      { id: "home-20", name: "Kudus", number: 20, team: home.slice(0, 3).toUpperCase(), x: 22, y: 30, action: "Carrying", status: "on-ball" },
-      { id: "home-5", name: "Partey", number: 5, team: home.slice(0, 3).toUpperCase(), x: 46, y: 55, action: "Switch option", status: "support" },
-      { id: "away-7", name: "Saka", number: 7, team: away.slice(0, 3).toUpperCase(), x: 67, y: 36, action: "Pressing", status: "press" },
-      { id: "away-2", name: "Walker", number: 2, team: away.slice(0, 3).toUpperCase(), x: 80, y: 66, action: "Cover run", status: "tracking" },
-      { id: "home-9", name: "Williams", number: 9, team: home.slice(0, 3).toUpperCase(), x: 58, y: 22, action: "Runs channel", status: "attack" },
-      { id: "away-4", name: "Rice", number: 4, team: away.slice(0, 3).toUpperCase(), x: 52, y: 48, action: "Screens pass", status: "press" }
+      { id: "home-9", name: `${homeCode} 9`, number: 9, team: homeCode, x: 22, y: 30, action: "In possession", status: "on-ball" },
+      { id: "home-6", name: `${homeCode} 6`, number: 6, team: homeCode, x: 46, y: 55, action: "Support option", status: "support" },
+      { id: "away-7", name: `${awayCode} 7`, number: 7, team: awayCode, x: 67, y: 36, action: "Pressing", status: "press" },
+      { id: "away-2", name: `${awayCode} 2`, number: 2, team: awayCode, x: 80, y: 66, action: "Cover run", status: "tracking" },
+      { id: "home-11", name: `${homeCode} 11`, number: 11, team: homeCode, x: 58, y: 22, action: "Wide run", status: "attack" },
+      { id: "away-4", name: `${awayCode} 4`, number: 4, team: awayCode, x: 52, y: 48, action: "Screens pass", status: "press" }
     ],
     actions: [
-      { minute: "68:21", player: "Kudus", text: "Carry into right half-space" },
-      { minute: "68:25", player: "Saka", text: "Closes touchline lane" },
-      { minute: "68:29", player: "Partey", text: "Available for switch" }
+      { minute: clock, player: "Match", text: `${home} vs ${away} is ${fixture.status || "scheduled"}` },
+      { minute: clock, player: "Score", text: fixture.score ? `${fixture.score}` : "Awaiting live score" }
     ]
   };
+}
+
+function teamCode(name) {
+  return text(name).split(/\s+/u).map((part) => part[0]).join("").slice(0, 3).toUpperCase() || "FC";
 }
 
 function gridPosition(grid, teamSide, index) {
@@ -458,11 +464,42 @@ function normalizeApiFootballLineups(lineups, fixture) {
 }
 
 function normalizeApiFootballEvents(events) {
-  return (events.response || []).slice(-8).reverse().map((event) => normalizeAction(
+  const list = Array.isArray(events) ? events : events.response || [];
+  return list.slice(-8).reverse().map((event) => normalizeAction(
     event.time?.elapsed ? `${event.time.elapsed}'` : "Live",
     event.player?.name,
     `${actionFromEvent(event)}${event.assist?.name ? ` by ${event.assist.name}` : ""}`
   ));
+}
+
+function normalizeApiFootballEventPlayers(events, fixture) {
+  const list = Array.isArray(events) ? events : events.response || [];
+  const positions = [
+    { x: 24, y: 32, status: "on-ball" },
+    { x: 58, y: 24, status: "attack" },
+    { x: 66, y: 42, status: "press" },
+    { x: 44, y: 58, status: "support" },
+    { x: 78, y: 68, status: "tracking" },
+    { x: 35, y: 44, status: "support" }
+  ];
+  return list
+    .filter((event) => event.player?.name)
+    .slice(-6)
+    .reverse()
+    .map((event, index) => {
+      const position = positions[index % positions.length];
+      const isHome = event.team?.name === fixture.home;
+      return {
+        id: String(event.player?.id || `${event.player.name}-${index}`),
+        name: text(event.player.name).split(" ").slice(-1)[0],
+        number: event.player?.number || index + 1,
+        team: teamCode(event.team?.name || (isHome ? fixture.home : fixture.away)),
+        x: position.x,
+        y: position.y,
+        action: actionFromEvent(event),
+        status: position.status
+      };
+    });
 }
 
 async function fetchApiFootballMatchState(fixture) {
@@ -471,12 +508,15 @@ async function fetchApiFootballMatchState(fixture) {
   const headers = { "x-apisports-key": key };
   const [lineupsResponse, eventsResponse] = await Promise.all([
     fetch(`https://v3.football.api-sports.io/fixtures/lineups?fixture=${fixture.id}`, { headers }),
-    fetch(`https://v3.football.api-sports.io/fixtures/events?fixture=${fixture.id}`, { headers })
+    fixture.events
+      ? Promise.resolve({ ok: true, json: async () => ({ response: fixture.events }) })
+      : fetch(`https://v3.football.api-sports.io/fixtures/events?fixture=${fixture.id}`, { headers })
   ]);
   if (!lineupsResponse.ok) throw new Error(`API-Football lineups returned ${lineupsResponse.status}`);
   if (!eventsResponse.ok) throw new Error(`API-Football events returned ${eventsResponse.status}`);
   const [lineups, events] = await Promise.all([lineupsResponse.json(), eventsResponse.json()]);
   const players = normalizeApiFootballLineups(lineups, fixture);
+  const eventPlayers = normalizeApiFootballEventPlayers(events, fixture);
   const actions = normalizeApiFootballEvents(events);
   if (!players.length && !actions.length) return null;
   return {
@@ -484,7 +524,9 @@ async function fetchApiFootballMatchState(fixture) {
     provider: "api-football",
     fixtureId: fixture.id,
     updatedAt: new Date().toISOString(),
-    players: players.length ? players : fallbackMatchState(fixture).players,
+    score: fixture.score || fallbackMatchState(fixture).score,
+    clock: fixture.elapsed ? `${fixture.elapsed}'` : fallbackMatchState(fixture).clock,
+    players: players.length ? players : eventPlayers.length ? eventPlayers : fallbackMatchState(fixture).players,
     actions: actions.length ? actions : fallbackMatchState(fixture).actions
   };
 }
@@ -570,9 +612,38 @@ async function fetchApiFootballFixtures() {
       home: item.teams?.home?.name || "Home",
       away: item.teams?.away?.name || "Away",
       kickoff: item.fixture?.date,
+      elapsed: item.fixture?.status?.elapsed,
       status: item.fixture?.status?.long || "Scheduled",
       score: item.goals?.home == null ? null : `${item.goals.home} - ${item.goals.away}`
     }))
+  };
+}
+
+async function fetchApiFootballLiveFixtures() {
+  const key = process.env.APISPORTS_KEY || process.env.API_FOOTBALL_KEY;
+  if (!key) return null;
+  const response = await fetch("https://v3.football.api-sports.io/fixtures?live=all", {
+    headers: { "x-apisports-key": key }
+  });
+  if (!response.ok) throw new Error(`API-Football live returned ${response.status}`);
+  const payload = await response.json();
+  const fixtures = (payload.response || [])
+    .filter((item) => String(item.league?.id) === "1" && String(item.league?.season) === "2026")
+    .map((item) => ({
+      id: String(item.fixture?.id),
+      competition: item.league?.name || "World Cup",
+      home: item.teams?.home?.name || "Home",
+      away: item.teams?.away?.name || "Away",
+      kickoff: item.fixture?.date,
+      elapsed: item.fixture?.status?.elapsed,
+      status: item.fixture?.status?.long || "Live",
+      score: item.goals?.home == null ? null : `${item.goals.home} - ${item.goals.away}`,
+      events: item.events || []
+    }));
+  return {
+    provider: "api-football-live",
+    updatedAt: new Date().toISOString(),
+    fixtures
   };
 }
 
@@ -610,7 +681,9 @@ async function getFixtures() {
 
   let payload;
   try {
-    payload = await fetchApiFootballFixtures();
+    payload = await fetchApiFootballLiveFixtures();
+    if (payload && !payload.fixtures.length) payload = null;
+    payload ||= await fetchApiFootballFixtures();
     if (payload && !payload.fixtures.length) payload = null;
     payload ||= await fetchFootballDataFixtures();
     if (payload && !payload.fixtures.length) payload = null;

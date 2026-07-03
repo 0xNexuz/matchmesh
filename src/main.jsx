@@ -581,6 +581,11 @@ function App() {
                 <span>{matchState.clock || "Live"}</span>
                 <strong>{matchState.score || "0 - 0"}</strong>
               </div>
+              <div className="match-strip">
+                <strong>{matchState.teams?.home || "Home"}</strong>
+                <span>{matchState.provider || "match-state"}</span>
+                <strong>{matchState.teams?.away || "Away"}</strong>
+              </div>
               <div className="pitch" aria-label="Live tactical field view">
                 <div className="ball-trail" aria-hidden="true" />
                 {(matchState.players || []).map((player) => (

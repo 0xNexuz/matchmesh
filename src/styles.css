@@ -504,6 +504,29 @@ p {
   line-height: 0.9;
 }
 
+.match-strip {
+  min-height: 44px;
+  margin: -4px 0 14px;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 12px;
+  padding: 0 12px;
+  border: 1px solid rgba(247, 244, 236, 0.12);
+  border-radius: 999px;
+  background: rgba(247, 244, 236, 0.055);
+}
+
+.match-strip strong:last-child {
+  text-align: right;
+}
+
+.match-strip span {
+  color: var(--teal);
+  font-size: 0.76rem;
+  font-weight: 900;
+}
+
 .pitch {
   position: relative;
   min-height: 420px;
