@@ -52,6 +52,12 @@ test("fixtures endpoint returns a room-ready feed", async () => {
   assert.ok(fixtures.body.fixtures.length > 0);
   assert.ok(fixtures.body.fixtures[0].home);
   assert.ok(fixtures.body.fixtures[0].away);
+
+  const matchState = await request("/api/match-state");
+  assert.equal(matchState.response.status, 200);
+  assert.ok(Array.isArray(matchState.body.players));
+  assert.ok(Array.isArray(matchState.body.actions));
+  assert.ok(matchState.body.players.length > 0);
 });
 
 test("room creation persists chat messages", async () => {

@@ -30,6 +30,11 @@ export function getFixtures() {
   return request("/api/fixtures");
 }
 
+export function getMatchState(fixtureId) {
+  const suffix = fixtureId ? `?fixtureId=${encodeURIComponent(fixtureId)}` : "";
+  return request(`/api/match-state${suffix}`);
+}
+
 export function createRoom(name) {
   return request("/api/rooms", {
     method: "POST",

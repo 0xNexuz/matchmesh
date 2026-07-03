@@ -29,6 +29,7 @@ import {
   getFanProfile,
   getFixtures,
   getLeaderboard,
+  getMatchState,
   getRoomMessages,
   getRuntimeStatus,
   getRecentTips,
@@ -82,21 +83,6 @@ const workflow = [
   "Sync chat and timeline",
   "Ask local AI",
   "Tip or split costs"
-];
-
-const fieldPlayers = [
-  { id: "kudus", name: "Kudus", number: 20, team: "GHA", x: 22, y: 30, action: "Carrying", status: "on-ball" },
-  { id: "partey", name: "Partey", number: 5, team: "GHA", x: 46, y: 55, action: "Switch option", status: "support" },
-  { id: "saka", name: "Saka", number: 7, team: "ENG", x: 67, y: 36, action: "Pressing", status: "press" },
-  { id: "walker", name: "Walker", number: 2, team: "ENG", x: 80, y: 66, action: "Cover run", status: "tracking" },
-  { id: "williams", name: "Williams", number: 9, team: "GHA", x: 58, y: 22, action: "Runs channel", status: "attack" },
-  { id: "rice", name: "Rice", number: 4, team: "ENG", x: 52, y: 48, action: "Screens pass", status: "press" }
-];
-
-const fieldActions = [
-  { minute: "68:21", player: "Kudus", text: "Carry into right half-space" },
-  { minute: "68:25", player: "Saka", text: "Closes touchline lane" },
-  { minute: "68:29", player: "Partey", text: "Available for switch" }
 ];
 
 function formatKickoff(value) {
@@ -154,6 +140,13 @@ function App() {
     fixtures: [],
     updatedAt: null
   });
+  const [matchState, setMatchState] = useState({
+    provider: "loading",
+    clock: "68'",
+    score: "1 - 1",
+    players: [],
+    actions: []
+  });
 
   const aiAnswer = useMemo(() => {
     const answers = {
@@ -177,6 +170,7 @@ function App() {
         });
       });
     getWalletStatus().then(setWalletInfo).catch(() => {});
+    getMatchState().then(setMatchState).catch(() => {});
     refreshProfile();
   }, []);
 
@@ -218,12 +212,15 @@ function App() {
     return createRoomFromName("Lagos Final Watch");
   }
 
-  async function createRoomFromName(name) {
+  async function createRoomFromName(name, fixtureId) {
     try {
       const room = await createRoom(name);
       setRoomCode(room.inviteCode);
       setRoomState(`${room.name} active with ${room.peers} peer${room.peers === 1 ? "" : "s"}`);
       if (room.points) setFanPoints(room.points.total);
+      if (fixtureId) {
+        getMatchState(fixtureId).then(setMatchState).catch(() => {});
+      }
       const result = await getRoomMessages(room.inviteCode);
       setRoomMessages(result.messages || []);
       await refreshProfile();
@@ -397,7 +394,7 @@ function App() {
                   <strong>{fixture.home} vs {fixture.away}</strong>
                   <span>{formatKickoff(fixture.kickoff)} · {fixture.status}</span>
                 </div>
-                <button onClick={() => createRoomFromName(`${fixture.home} vs ${fixture.away}`)}>
+                <button onClick={() => createRoomFromName(`${fixture.home} vs ${fixture.away}`, fixture.id)}>
                   {fixture.score || "Open room"}
                 </button>
               </article>
@@ -427,15 +424,15 @@ function App() {
           <div className="room-layout">
             <section className="timeline-panel">
               <div className="scoreline">
-                <span>68'</span>
-                <strong>1 - 1</strong>
+                <span>{matchState.clock || "Live"}</span>
+                <strong>{matchState.score || "0 - 0"}</strong>
               </div>
               <div className="pitch" aria-label="Live tactical field view">
                 <div className="ball-trail" aria-hidden="true" />
-                {fieldPlayers.map((player) => (
+                {(matchState.players || []).map((player) => (
                   <button
                     key={player.id}
-                    className={`player ${player.team.toLowerCase()} ${player.status}`}
+                    className={`player ${player.status || "support"}`}
                     style={{ left: `${player.x}%`, top: `${player.y}%` }}
                     aria-label={`${player.name}, ${player.team}, ${player.action}`}
                   >
@@ -447,9 +444,9 @@ function App() {
                 <div className="field-action-board" aria-label="Current player actions">
                   <div>
                     <strong>Live actions</strong>
-                    <span>provider-ready</span>
+                    <span>{matchState.provider || "provider-ready"}</span>
                   </div>
-                  {fieldActions.map((action) => (
+                  {(matchState.actions || []).slice(0, 4).map((action) => (
                     <article key={`${action.minute}-${action.player}`}>
                       <time>{action.minute}</time>
                       <p><b>{action.player}</b> {action.text}</p>

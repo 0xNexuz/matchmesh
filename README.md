@@ -38,6 +38,7 @@ npm start
 - `MATCHMESH_FIXTURES_TIMEZONE`, `MATCHMESH_FIXTURES_DATE`, and `MATCHMESH_FIXTURES_CACHE_MS` tune fixture requests.
 - `MATCHMESH_API_FOOTBALL_LEAGUE=1` and `MATCHMESH_API_FOOTBALL_SEASON=2026` scope API-Football to the 2026 World Cup.
 - `MATCHMESH_FOOTBALL_DATA_COMPETITION=WC` scopes football-data.org to the World Cup competition.
+- `/api/match-state` uses API-Football lineups/events when `APISPORTS_KEY` or `API_FOOTBALL_KEY` is configured, then tries football-data.org unfolded match detail, then falls back to a curated tactical view.
 
 ## Fixture Provider Keys
 
@@ -47,6 +48,8 @@ Use one provider key in `.env`:
 - football-data.org: create an account at `https://www.football-data.org/client/register`, copy the token, and set `FOOTBALL_DATA_TOKEN=...`.
 
 API-Football usually has broader live fixture coverage. football-data.org is simpler for schedules and scores when the World Cup competition is available on your plan.
+
+For the live pitch view, API-Football/API-Sports is the recommended provider because it exposes fixture lineups and fixture events. football-data.org can expose lineups, goals, bookings, and substitutions through unfolded match detail when the competition/plan supports it.
 
 ## Free Working Setup
 

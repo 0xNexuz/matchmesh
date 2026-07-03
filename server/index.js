@@ -45,6 +45,7 @@ const runtime = {
   walletLedger: [],
   rateLimits: new Map(),
   fixturesCache: { expiresAt: 0, payload: null },
+  matchStateCache: { expiresAt: 0, payload: null },
   swarm: null,
   store: null,
   wdk: null
@@ -366,6 +367,188 @@ function fallbackFixtures() {
   };
 }
 
+function fallbackMatchState(fixture = {}) {
+  const home = fixture.home || "Ghana";
+  const away = fixture.away || "England";
+  return {
+    provider: "curated-fallback",
+    fixtureId: fixture.id || "fallback",
+    updatedAt: new Date().toISOString(),
+    score: fixture.score || "1 - 1",
+    clock: "68'",
+    teams: { home, away },
+    players: [
+      { id: "home-20", name: "Kudus", number: 20, team: home.slice(0, 3).toUpperCase(), x: 22, y: 30, action: "Carrying", status: "on-ball" },
+      { id: "home-5", name: "Partey", number: 5, team: home.slice(0, 3).toUpperCase(), x: 46, y: 55, action: "Switch option", status: "support" },
+      { id: "away-7", name: "Saka", number: 7, team: away.slice(0, 3).toUpperCase(), x: 67, y: 36, action: "Pressing", status: "press" },
+      { id: "away-2", name: "Walker", number: 2, team: away.slice(0, 3).toUpperCase(), x: 80, y: 66, action: "Cover run", status: "tracking" },
+      { id: "home-9", name: "Williams", number: 9, team: home.slice(0, 3).toUpperCase(), x: 58, y: 22, action: "Runs channel", status: "attack" },
+      { id: "away-4", name: "Rice", number: 4, team: away.slice(0, 3).toUpperCase(), x: 52, y: 48, action: "Screens pass", status: "press" }
+    ],
+    actions: [
+      { minute: "68:21", player: "Kudus", text: "Carry into right half-space" },
+      { minute: "68:25", player: "Saka", text: "Closes touchline lane" },
+      { minute: "68:29", player: "Partey", text: "Available for switch" }
+    ]
+  };
+}
+
+function gridPosition(grid, teamSide, index) {
+  if (!grid || !grid.includes(":")) {
+    const row = Math.floor(index / 4);
+    const col = index % 4;
+    const x = teamSide === "home" ? 14 + row * 11 : 86 - row * 11;
+    return { x, y: 18 + col * 18 };
+  }
+  const [lineRaw, slotRaw] = grid.split(":");
+  const line = Number(lineRaw);
+  const slot = Number(slotRaw);
+  const x = teamSide === "home" ? 9 + line * 9 : 91 - line * 9;
+  const y = Math.min(88, Math.max(12, slot * 16));
+  return { x, y };
+}
+
+function playerStatusFromPosition(position) {
+  const value = text(position).toLowerCase();
+  if (value.includes("attacker") || value === "f" || value === "fw") return "attack";
+  if (value.includes("mid") || value === "m") return "support";
+  if (value.includes("def") || value === "d") return "tracking";
+  return "support";
+}
+
+function actionFromEvent(event) {
+  const type = text(event.type || event.card || event.typeOfEvent);
+  const detail = text(event.detail || event.card || event.type);
+  if (/subst|sub/i.test(type) || /sub/i.test(detail)) return "Substitution";
+  if (/goal/i.test(type) || /goal/i.test(detail)) return "Scored";
+  if (/card|yellow|red/i.test(type) || /card|yellow|red/i.test(detail)) return "Booked";
+  if (/assist/i.test(type) || /assist/i.test(detail)) return "Assisted";
+  return detail || type || "Match event";
+}
+
+function normalizeAction(minute, player, action) {
+  return {
+    minute: String(minute || "Live"),
+    player: text(player || "Player").slice(0, 40),
+    text: text(action || "Match action").slice(0, 90)
+  };
+}
+
+function normalizeApiFootballLineups(lineups, fixture) {
+  const players = [];
+  for (const [teamIndex, lineup] of (lineups.response || []).entries()) {
+    const teamSide = teamIndex === 0 ? "home" : "away";
+    const teamCode = text(lineup.team?.name || (teamSide === "home" ? fixture.home : fixture.away)).slice(0, 3).toUpperCase();
+    for (const [index, item] of (lineup.startXI || []).entries()) {
+      const player = item.player || {};
+      const pos = gridPosition(player.grid, teamSide, index);
+      players.push({
+        id: String(player.id || `${teamSide}-${index}`),
+        name: text(player.name || `Player ${index + 1}`).split(" ").slice(-1)[0],
+        number: player.number || index + 1,
+        team: teamCode,
+        x: pos.x,
+        y: pos.y,
+        action: player.pos || "On field",
+        status: playerStatusFromPosition(player.pos)
+      });
+    }
+  }
+  return players.slice(0, 22);
+}
+
+function normalizeApiFootballEvents(events) {
+  return (events.response || []).slice(-8).reverse().map((event) => normalizeAction(
+    event.time?.elapsed ? `${event.time.elapsed}'` : "Live",
+    event.player?.name,
+    `${actionFromEvent(event)}${event.assist?.name ? ` by ${event.assist.name}` : ""}`
+  ));
+}
+
+async function fetchApiFootballMatchState(fixture) {
+  const key = process.env.APISPORTS_KEY || process.env.API_FOOTBALL_KEY;
+  if (!key || !/^\d+$/u.test(String(fixture.id))) return null;
+  const headers = { "x-apisports-key": key };
+  const [lineupsResponse, eventsResponse] = await Promise.all([
+    fetch(`https://v3.football.api-sports.io/fixtures/lineups?fixture=${fixture.id}`, { headers }),
+    fetch(`https://v3.football.api-sports.io/fixtures/events?fixture=${fixture.id}`, { headers })
+  ]);
+  if (!lineupsResponse.ok) throw new Error(`API-Football lineups returned ${lineupsResponse.status}`);
+  if (!eventsResponse.ok) throw new Error(`API-Football events returned ${eventsResponse.status}`);
+  const [lineups, events] = await Promise.all([lineupsResponse.json(), eventsResponse.json()]);
+  const players = normalizeApiFootballLineups(lineups, fixture);
+  const actions = normalizeApiFootballEvents(events);
+  if (!players.length && !actions.length) return null;
+  return {
+    ...fallbackMatchState(fixture),
+    provider: "api-football",
+    fixtureId: fixture.id,
+    updatedAt: new Date().toISOString(),
+    players: players.length ? players : fallbackMatchState(fixture).players,
+    actions: actions.length ? actions : fallbackMatchState(fixture).actions
+  };
+}
+
+function normalizeFootballDataTeamPlayers(team, teamSide, fixture) {
+  const list = team?.lineup || [];
+  const teamCode = text(team?.name || (teamSide === "home" ? fixture.home : fixture.away)).slice(0, 3).toUpperCase();
+  return list.slice(0, 11).map((player, index) => {
+    const pos = gridPosition("", teamSide, index);
+    return {
+      id: String(player.id || `${teamSide}-${index}`),
+      name: text(player.name || `Player ${index + 1}`).split(" ").slice(-1)[0],
+      number: player.shirtNumber || index + 1,
+      team: teamCode,
+      x: pos.x,
+      y: pos.y,
+      action: player.position || "On field",
+      status: playerStatusFromPosition(player.position)
+    };
+  });
+}
+
+function normalizeFootballDataActions(match) {
+  const events = [
+    ...(match.goals || []).map((goal) => normalizeAction(`${goal.minute || "Live"}'`, goal.scorer?.name, "Scored")),
+    ...(match.bookings || []).map((card) => normalizeAction(`${card.minute || "Live"}'`, card.player?.name, `${card.card || "Card"}`)),
+    ...(match.substitutions || []).map((sub) => normalizeAction(`${sub.minute || "Live"}'`, sub.playerOut?.name, `Sub off for ${sub.playerIn?.name || "replacement"}`))
+  ];
+  return events.slice(-8).reverse();
+}
+
+async function fetchFootballDataMatchState(fixture) {
+  const key = process.env.FOOTBALL_DATA_TOKEN;
+  if (!key || !/^\d+$/u.test(String(fixture.id))) return null;
+  const response = await fetch(`https://api.football-data.org/v4/matches/${fixture.id}`, {
+    headers: {
+      "X-Auth-Token": key,
+      "X-Unfold-Lineups": "true",
+      "X-Unfold-Subs": "true",
+      "X-Unfold-Goals": "true",
+      "X-Unfold-Bookings": "true"
+    }
+  });
+  if (!response.ok) throw new Error(`football-data.org match state returned ${response.status}`);
+  const payload = await response.json();
+  const match = payload.match || payload;
+  const players = [
+    ...normalizeFootballDataTeamPlayers(match.homeTeam, "home", fixture),
+    ...normalizeFootballDataTeamPlayers(match.awayTeam, "away", fixture)
+  ];
+  const actions = normalizeFootballDataActions(match);
+  if (!players.length && !actions.length) return null;
+  return {
+    ...fallbackMatchState(fixture),
+    provider: "football-data.org",
+    fixtureId: fixture.id,
+    updatedAt: new Date().toISOString(),
+    score: match.score?.fullTime?.home == null ? fixture.score : `${match.score.fullTime.home} - ${match.score.fullTime.away}`,
+    clock: match.minute ? `${match.minute}'` : fallbackMatchState(fixture).clock,
+    players: players.length ? players : fallbackMatchState(fixture).players,
+    actions: actions.length ? actions : fallbackMatchState(fixture).actions
+  };
+}
+
 async function fetchApiFootballFixtures() {
   const key = process.env.APISPORTS_KEY || process.env.API_FOOTBALL_KEY;
   if (!key) return null;
@@ -441,6 +624,29 @@ async function getFixtures() {
   return payload;
 }
 
+async function getMatchState(fixtureId) {
+  const now = Date.now();
+  if (!fixtureId && runtime.matchStateCache.payload && runtime.matchStateCache.expiresAt > now) {
+    return runtime.matchStateCache.payload;
+  }
+  const fixtures = await getFixtures();
+  const fixture = fixtures.fixtures.find((item) => String(item.id) === String(fixtureId)) || fixtures.fixtures[0] || {};
+  let payload;
+  try {
+    payload = await fetchApiFootballMatchState(fixture);
+    payload ||= await fetchFootballDataMatchState(fixture);
+  } catch (error) {
+    payload = {
+      ...fallbackMatchState(fixture),
+      provider: "fallback-after-provider-error",
+      providerError: error.message
+    };
+  }
+  payload ||= fallbackMatchState(fixture);
+  if (!fixtureId) runtime.matchStateCache = { payload, expiresAt: now + fixturesCacheMs };
+  return payload;
+}
+
 async function handleApi(request, response, pathname) {
   if (!rateLimit(request, response)) return;
 
@@ -470,6 +676,11 @@ async function handleApi(request, response, pathname) {
 
   if (pathname === "/api/fixtures" && request.method === "GET") {
     return json(response, 200, await getFixtures());
+  }
+
+  if (pathname === "/api/match-state" && request.method === "GET") {
+    const url = new URL(request.url, `http://${request.headers.host}`);
+    return json(response, 200, await getMatchState(url.searchParams.get("fixtureId")));
   }
 
   if (pathname === "/api/profile" && request.method === "GET") {
