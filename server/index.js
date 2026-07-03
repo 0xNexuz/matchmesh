@@ -4,6 +4,7 @@ import { mkdir } from "node:fs/promises";
 import { extname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createServer } from "node:http";
+import { tmpdir } from "node:os";
 import "dotenv/config";
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
@@ -17,7 +18,9 @@ const rateLimitMax = Number(process.env.MATCHMESH_RATE_LIMIT_MAX || 120);
 const fixturesCacheMs = Number(process.env.MATCHMESH_FIXTURES_CACHE_MS || 60_000);
 const dataDir = process.env.MATCHMESH_DATA_DIR
   ? resolve(process.env.MATCHMESH_DATA_DIR)
-  : join(root, ".matchmesh-data");
+  : process.env.VERCEL
+    ? join(tmpdir(), "matchmesh-data")
+    : join(root, ".matchmesh-data");
 
 const mime = {
   ".html": "text/html; charset=utf-8",
