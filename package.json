@@ -13,6 +13,8 @@
     "check": "npm run build && npm test"
   },
   "dependencies": {
+    "@solana/spl-token": "^0.4.14",
+    "@solana/web3.js": "^1.98.4",
     "@tetherto/wdk": "1.0.0-beta.12",
     "@tetherto/wdk-wallet-solana": "^1.0.0-beta.11",
     "@vitejs/plugin-react": "^4.3.4",

@@ -16,6 +16,7 @@ const maxBodyBytes = Number(process.env.MATCHMESH_MAX_BODY_BYTES || 16_384);
 const rateLimitWindowMs = Number(process.env.MATCHMESH_RATE_LIMIT_WINDOW_MS || 60_000);
 const rateLimitMax = Number(process.env.MATCHMESH_RATE_LIMIT_MAX || 120);
 const fixturesCacheMs = Number(process.env.MATCHMESH_FIXTURES_CACHE_MS || 60_000);
+const defaultDevnetUsdtMint = "B5fhbYJUcneRnpJeYhZks6McbjzY24h33DaJasJyTqcu";
 const dataDir = process.env.MATCHMESH_DATA_DIR
   ? resolve(process.env.MATCHMESH_DATA_DIR)
   : process.env.VERCEL
@@ -312,6 +313,7 @@ async function walletAccountAddress() {
 
 async function walletStatusPayload() {
   const network = process.env.MATCHMESH_WALLET_CHAIN?.trim() || "solana-devnet";
+  const tokenMint = process.env.MATCHMESH_USDT_MINT || process.env.MATCHMESH_TOKEN_MINT || defaultDevnetUsdtMint;
   let accountAddress = null;
   let nativeBalanceLamports = null;
   let tokenBalance = null;
@@ -320,8 +322,7 @@ async function walletStatusPayload() {
     if (runtime.wdk) {
       const account = await runtime.wdk.getAccount(process.env.MATCHMESH_WALLET_CHAIN?.trim() || "solana", 0);
       nativeBalanceLamports = (await account.getBalance()).toString();
-      const token = process.env.MATCHMESH_USDT_MINT || process.env.MATCHMESH_TOKEN_MINT;
-      if (token) tokenBalance = (await account.getTokenBalance(token)).toString();
+      if (tokenMint) tokenBalance = (await account.getTokenBalance(tokenMint)).toString();
     }
   } catch {}
   const receiveTarget = accountAddress
@@ -335,13 +336,13 @@ async function walletStatusPayload() {
     receiveTarget,
     nativeBalanceLamports,
     tokenBalance,
-    tokenMint: process.env.MATCHMESH_USDT_MINT || process.env.MATCHMESH_TOKEN_MINT || null
+    tokenMint
   };
 }
 
 async function tryNativeWalletTransfer({ recipient, amount }) {
   const walletChain = process.env.MATCHMESH_WALLET_CHAIN?.trim() || "solana";
-  const token = process.env.MATCHMESH_USDT_MINT || process.env.MATCHMESH_TOKEN_MINT;
+  const token = process.env.MATCHMESH_USDT_MINT || process.env.MATCHMESH_TOKEN_MINT || defaultDevnetUsdtMint;
   if (!runtime.wdk) return { status: "recorded-policy-ledger", accountAddress: null };
   const account = await runtime.wdk.getAccount(walletChain, 0);
   const accountAddress = await account.getAddress();

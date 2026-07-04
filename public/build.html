@@ -176,7 +176,7 @@
           <li>The wallet belongs to the current user profile and exposes a receive QR for the active account.</li>
           <li>Users start with one Spending pocket and can add more pockets for pools, creator payouts, or matchday costs.</li>
           <li>Transfers create a wallet receipt immediately and attempt WDK execution when a native wallet, RPC, and valid recipient are available.</li>
-          <li>If a mock USDT mint is configured, the transfer uses SPL tokens. Without a mint, devnet SOL is sent as the live on-chain proof path.</li>
+          <li>The devnet mock USDT mint is configured by default, so wallet transfers use SPL tokens. If the mint is removed, devnet SOL is used as a fallback proof path.</li>
           <li>Recovery, import, export, rotation, and fund removal are hidden behind a Recovery & keys drawer so sensitive actions stay deliberate.</li>
         </ul>
       </section>

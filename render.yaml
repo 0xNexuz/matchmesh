@@ -18,6 +18,10 @@ services:
         value: https://api.devnet.solana.com
       - key: MATCHMESH_SOLANA_COMMITMENT
         value: confirmed
+      - key: MATCHMESH_USDT_MINT
+        value: B5fhbYJUcneRnpJeYhZks6McbjzY24h33DaJasJyTqcu
+      - key: MATCHMESH_USDT_DECIMALS
+        value: "6"
       - key: MATCHMESH_FIXTURES_TIMEZONE
         value: Africa/Lagos
       - key: MATCHMESH_FOOTBALL_DATA_COMPETITION
