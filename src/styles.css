@@ -1292,10 +1292,19 @@ select {
   grid-column: 1 / -1;
 }
 
-.recent-wallet-tips a {
+.recent-wallet-tips a,
+.tx-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   color: #0b7f70;
   font-size: 0.85rem;
   font-weight: 850;
+}
+
+.recent-wallet-tips .tx-link {
+  justify-self: start;
+  grid-column: 1 / -1;
 }
 
 .wallet-manage-toggle {

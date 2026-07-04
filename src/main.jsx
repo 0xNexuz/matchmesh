@@ -125,6 +125,12 @@ function fixtureProviderLabel(provider) {
   return labels[provider] || "World Cup slate";
 }
 
+function explorerTxUrl(txHash, network = "solana") {
+  if (!txHash) return "";
+  const cluster = /mainnet/i.test(network) ? "" : "?cluster=devnet";
+  return `https://explorer.solana.com/tx/${encodeURIComponent(txHash)}${cluster}`;
+}
+
 function extractInviteCode(value) {
   return (value || "").toUpperCase().match(/MESH-[A-F0-9]{4}/u)?.[0] || "";
 }
@@ -990,6 +996,16 @@ function App() {
                         <span>{tip.recipient.slice(0, 16)}</span>
                         <strong>{tip.amount} {tip.asset}</strong>
                         <small>{tip.status}</small>
+                        {tip.txHash && (
+                          <a
+                            className="tx-link"
+                            href={explorerTxUrl(tip.txHash, walletInfo?.network)}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            View tx <ExternalLink size={12} />
+                          </a>
+                        )}
                       </article>
                     ))}
                     {!recentTips.length && <p>No tips yet.</p>}
@@ -1059,7 +1075,17 @@ function App() {
             {recentTips.slice(0, 5).map((tip) => (
               <article key={tip.id}>
                 <strong>{tip.recipient}</strong>
-                <span>{tip.amount} {tip.asset} · {tip.status}</span>
+                <span>{tip.amount} {tip.asset} - {tip.status}</span>
+                {tip.txHash && (
+                  <a
+                    className="tx-link"
+                    href={explorerTxUrl(tip.txHash, walletInfo?.network)}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    View tx <ExternalLink size={12} />
+                  </a>
+                )}
               </article>
             ))}
             {!recentTips.length && <p>No tips yet.</p>}
