@@ -50,6 +50,7 @@ async function proxyToNative(request, response, url) {
   if (request.headers["content-type"]) headers["content-type"] = request.headers["content-type"];
   if (request.headers.accept) headers.accept = request.headers.accept;
   if (request.headers["user-agent"]) headers["user-agent"] = request.headers["user-agent"];
+  if (request.headers.authorization) headers.authorization = request.headers.authorization;
   const nativeResponse = await fetch(target, {
     method: request.method,
     headers,
