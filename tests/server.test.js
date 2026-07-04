@@ -118,6 +118,37 @@ test("fans can join multiple rooms and see points", async () => {
   assert.ok(leaderboard.body.leaderboard.some((fan) => fan.memberId === "multi-fan"));
 });
 
+test("accounts issue sessions and can drive room actions", async () => {
+  const auth = await request("/api/auth/session", {
+    method: "POST",
+    body: JSON.stringify({ displayName: "Session Fan" })
+  });
+  assert.equal(auth.response.status, 201);
+  assert.ok(auth.body.token);
+  assert.equal(auth.body.profile.displayName, "Session Fan");
+
+  const room = await request("/api/rooms", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      authorization: `Bearer ${auth.body.token}`
+    },
+    body: JSON.stringify({ name: "Session Room" })
+  });
+  assert.equal(room.response.status, 201);
+
+  const message = await request(`/api/rooms/${room.body.inviteCode}/messages`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      authorization: `Bearer ${auth.body.token}`
+    },
+    body: JSON.stringify({ text: "Signed in message" })
+  });
+  assert.equal(message.response.status, 201);
+  assert.equal(message.body.name, "Session Fan");
+});
+
 test("assistant and wallet endpoints return operational responses", async () => {
   const ai = await request("/api/ai/completion", {
     method: "POST",

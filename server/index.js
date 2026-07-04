@@ -44,6 +44,7 @@ const runtime = {
   memberships: new Map(),
   points: new Map(),
   profiles: new Map(),
+  sessions: new Map(),
   walletLedger: [],
   rateLimits: new Map(),
   fixturesCache: { expiresAt: 0, payload: null },
@@ -69,6 +70,7 @@ async function loadState() {
     runtime.memberships = new Map((snapshot.memberships || []).map(([id, rooms]) => [id, new Set(rooms)]));
     runtime.points = new Map(snapshot.points || []);
     runtime.profiles = new Map(snapshot.profiles || []);
+    runtime.sessions = new Map(snapshot.sessions || []);
     runtime.walletLedger = snapshot.walletLedger || [];
   } catch {}
 }
@@ -80,6 +82,7 @@ async function saveState() {
     memberships: [...runtime.memberships.entries()].map(([id, rooms]) => [id, [...rooms]]),
     points: [...runtime.points.entries()],
     profiles: [...runtime.profiles.entries()],
+    sessions: [...runtime.sessions.entries()],
     walletLedger: runtime.walletLedger.slice(-100)
   };
   await writeFile(stateFile, JSON.stringify(snapshot, null, 2)).catch(() => {});
@@ -251,6 +254,54 @@ function memberIdFrom(value) {
   return text(value || "local-fan").slice(0, 48) || "local-fan";
 }
 
+function slug(value) {
+  return text(value).toLowerCase().replace(/[^a-z0-9]+/gu, "-").replace(/^-|-$/gu, "").slice(0, 32);
+}
+
+function sessionHash(token) {
+  return createHash("sha256").update(String(token || "")).digest("hex");
+}
+
+function authTokenFrom(request) {
+  const header = request.headers.authorization || "";
+  const match = header.match(/^Bearer\s+(.+)$/iu);
+  return match?.[1]?.trim() || "";
+}
+
+function memberIdFromSession(request) {
+  const token = authTokenFrom(request);
+  if (!token) return "";
+  return runtime.sessions.get(sessionHash(token))?.memberId || "";
+}
+
+function memberIdFromBodyOrSession(body, request) {
+  return memberIdFrom(body.memberId || memberIdFromSession(request));
+}
+
+function createSession(memberId) {
+  const token = randomBytes(32).toString("base64url");
+  runtime.sessions.set(sessionHash(token), {
+    memberId: memberIdFrom(memberId),
+    createdAt: new Date().toISOString()
+  });
+  return token;
+}
+
+function accountForDisplayName(displayName) {
+  const cleanName = text(displayName).slice(0, 48) || `Fan ${randomBytes(2).toString("hex").toUpperCase()}`;
+  const handle = slug(cleanName) || `fan-${randomBytes(3).toString("hex")}`;
+  let memberId = `fan-${handle}`;
+  if (runtime.profiles.has(memberId) && runtime.profiles.get(memberId)?.displayName !== cleanName) {
+    memberId = `${memberId}-${randomBytes(2).toString("hex")}`;
+  }
+  const profile = profileFor(memberId);
+  profile.displayName = cleanName;
+  profile.handle = handle;
+  profile.updatedAt = new Date().toISOString();
+  runtime.profiles.set(memberId, profile);
+  return profile;
+}
+
 function memberRooms(memberId) {
   const id = memberIdFrom(memberId);
   if (!runtime.memberships.has(id)) runtime.memberships.set(id, new Set());
@@ -384,7 +435,7 @@ async function tryNativeWalletTransfer({ recipient, amount }) {
   return { status: "wallet-execution-pending", accountAddress };
 }
 
-async function createWalletTransfer(body, intent = "transfer") {
+async function createWalletTransfer(body, request, intent = "transfer") {
   if (!runtime.wdkStatus?.ready) {
     const error = new Error("WDK wallet is not configured");
     error.status = 503;
@@ -392,7 +443,7 @@ async function createWalletTransfer(body, intent = "transfer") {
   }
   const amount = Number(body.amount);
   const recipient = text(body.recipient).slice(0, 120);
-  const memberId = memberIdFrom(body.memberId);
+  const memberId = memberIdFromBodyOrSession(body, request);
   if (!Number.isFinite(amount) || amount <= 0 || amount > 100) {
     const error = new Error("Transfer amount must be between 0 and 100 USDt");
     error.status = 400;
@@ -895,14 +946,38 @@ async function handleApi(request, response, pathname) {
     return json(response, 200, await getMatchState(url.searchParams.get("fixtureId")));
   }
 
+  if (pathname === "/api/auth/session" && request.method === "POST") {
+    const body = await readBody(request);
+    const profile = accountForDisplayName(body.displayName);
+    const token = createSession(profile.memberId);
+    await saveState();
+    return json(response, 201, {
+      token,
+      profile: fanProfile(profile.memberId)
+    });
+  }
+
+  if (pathname === "/api/auth/session" && request.method === "GET") {
+    const memberId = memberIdFromSession(request);
+    if (!memberId) return json(response, 401, { error: "Not signed in" });
+    return json(response, 200, { profile: fanProfile(memberId) });
+  }
+
+  if (pathname === "/api/auth/session" && request.method === "DELETE") {
+    const token = authTokenFrom(request);
+    if (token) runtime.sessions.delete(sessionHash(token));
+    await saveState();
+    return json(response, 200, { ok: true });
+  }
+
   if (pathname === "/api/profile" && request.method === "GET") {
     const url = new URL(request.url, `http://${request.headers.host}`);
-    return json(response, 200, fanProfile(url.searchParams.get("memberId")));
+    return json(response, 200, fanProfile(url.searchParams.get("memberId") || memberIdFromSession(request)));
   }
 
   if (pathname === "/api/profile" && request.method === "PATCH") {
     const body = await readBody(request);
-    const profile = profileFor(body.memberId);
+    const profile = profileFor(body.memberId || memberIdFromSession(request));
     const displayName = text(body.displayName).slice(0, 48);
     const walletAddress = text(body.walletAddress).slice(0, 120);
     if (displayName) profile.displayName = displayName;
@@ -946,7 +1021,7 @@ async function handleApi(request, response, pathname) {
   if (pathname === "/api/rooms" && request.method === "POST") {
     const body = await readBody(request);
     const name = text(body.name).slice(0, 80);
-    const memberId = memberIdFrom(body.memberId);
+    const memberId = memberIdFromBodyOrSession(body, request);
     if (body.name && !name) return json(response, 400, { error: "Room name is required" });
     const inviteCode = `MESH-${randomBytes(2).toString("hex").toUpperCase()}`;
     const room = {
@@ -975,7 +1050,7 @@ async function handleApi(request, response, pathname) {
   if (pathname === "/api/rooms/join" && request.method === "POST") {
     const body = await readBody(request);
     const inviteCode = text(body.inviteCode).toUpperCase();
-    const memberId = memberIdFrom(body.memberId);
+    const memberId = memberIdFromBodyOrSession(body, request);
     if (!isValidRoomCode(inviteCode)) return json(response, 400, { error: "Invalid room code" });
     const room = runtime.rooms.get(inviteCode);
     if (!room) return json(response, 404, { error: "Room not found on this device yet" });
@@ -1015,7 +1090,7 @@ async function handleApi(request, response, pathname) {
       id: randomBytes(8).toString("hex"),
       name: "System",
       team: "SYS",
-      text: `${memberIdFrom(body.memberId)} renamed the room to ${name}.`,
+      text: `${memberIdFromBodyOrSession(body, request)} renamed the room to ${name}.`,
       tag: "Room",
       createdAt: room.updatedAt
     });
@@ -1034,10 +1109,11 @@ async function handleApi(request, response, pathname) {
     const inviteCode = decodeURIComponent(roomMessagesMatch[1]);
     if (!isValidRoomCode(inviteCode)) return json(response, 400, { error: "Invalid room code" });
     const body = await readBody(request);
-    const memberId = memberIdFrom(body.memberId || body.name);
+    const memberId = memberIdFromBodyOrSession(body, request);
+    const profile = profileFor(memberId);
     const message = {
       id: randomBytes(8).toString("hex"),
-      name: text(body.name || "Fan").slice(0, 32),
+      name: text(body.name || profile.displayName || memberId).slice(0, 32),
       team: text(body.team || "ROOM").slice(0, 8).toUpperCase(),
       text: text(body.text).slice(0, 280),
       tag: text(body.tag || "Live").slice(0, 16),
@@ -1068,7 +1144,7 @@ async function handleApi(request, response, pathname) {
 
   if (pathname === "/api/wallet/tip" && request.method === "POST") {
     try {
-      return json(response, 202, await createWalletTransfer(await readBody(request), "tip"));
+      return json(response, 202, await createWalletTransfer(await readBody(request), request, "tip"));
     } catch (error) {
       return json(response, error.status || 500, { error: error.message });
     }
@@ -1076,7 +1152,7 @@ async function handleApi(request, response, pathname) {
 
   if (pathname === "/api/wallet/transfer" && request.method === "POST") {
     try {
-      return json(response, 202, await createWalletTransfer(await readBody(request), "transfer"));
+      return json(response, 202, await createWalletTransfer(await readBody(request), request, "transfer"));
     } catch (error) {
       return json(response, error.status || 500, { error: error.message });
     }

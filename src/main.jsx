@@ -43,9 +43,12 @@ import {
   importWallet,
   joinRoom,
   requestAiCompletion,
+  restoreAccount,
   sendChatMessage,
   sendWalletTransfer,
   sendWalletTip,
+  signInAccount,
+  signOutAccount,
   updateFanProfile,
   updateRoom
 } from "./runtimeClient";
@@ -199,6 +202,7 @@ function App() {
   const [pointEvents, setPointEvents] = useState([]);
   const [leaderboard, setLeaderboard] = useState([]);
   const [userProfile, setUserProfile] = useState({ memberId: getMemberId(), displayName: "Local fan" });
+  const [accountNameDraft, setAccountNameDraft] = useState("Local fan");
   const [recentTips, setRecentTips] = useState([]);
   const [walletInfo, setWalletInfo] = useState(null);
   const [receiveQr, setReceiveQr] = useState("");
@@ -247,6 +251,20 @@ function App() {
   useEffect(() => {
     const roomFromUrl = extractInviteCode(new URLSearchParams(window.location.search).get("room"));
     if (roomFromUrl) setJoinCode(roomFromUrl);
+    async function bootAccount() {
+      try {
+        const profile = await restoreAccount();
+        setUserProfile(profile);
+        setAccountNameDraft(profile.displayName || profile.memberId);
+      } catch {
+        const suffix = crypto.randomUUID().slice(0, 4).toUpperCase();
+        const profile = await signInAccount(`Fan ${suffix}`);
+        setUserProfile(profile);
+        setAccountNameDraft(profile.displayName || profile.memberId);
+      }
+      await refreshProfile();
+    }
+    bootAccount().catch(() => {});
     getRuntimeStatus().then(setRuntimeStatus);
     const savedWallet = storedJson("matchmesh-wallet", null);
     const savedPockets = storedJson("matchmesh-wallet-pockets", defaultPockets.map(({ icon, ...pocket }) => pocket));
@@ -265,7 +283,6 @@ function App() {
       });
     getWalletStatus().then(setWalletInfo).catch(() => {});
     getMatchState().then(setMatchState).catch(() => {});
-    refreshProfile();
   }, []);
 
   useEffect(() => {
@@ -285,6 +302,7 @@ function App() {
     try {
       const profile = await getFanProfile();
       setUserProfile(profile);
+      setAccountNameDraft(profile.displayName || profile.memberId);
       setJoinedRooms(profile.rooms || []);
       setFanPoints(profile.points || 0);
       setPointEvents(profile.pointEvents || []);
@@ -427,6 +445,32 @@ function App() {
       setRoomNameDraft(room.name);
       setRoomState(`${room.name} renamed`);
       await refreshProfile();
+    } catch (error) {
+      setRoomState(error.payload?.error || error.message);
+    }
+  }
+
+  async function handleSaveAccount() {
+    try {
+      const name = accountNameDraft.trim() || userProfile.displayName || "MatchMesh fan";
+      const profile = await updateFanProfile({ displayName: name });
+      setUserProfile(profile);
+      setAccountNameDraft(profile.displayName || profile.memberId);
+      setRoomState(`${profile.displayName} account saved`);
+    } catch (error) {
+      setRoomState(error.payload?.error || error.message);
+    }
+  }
+
+  async function handleSwitchAccount() {
+    try {
+      await signOutAccount();
+      const suffix = crypto.randomUUID().slice(0, 4).toUpperCase();
+      const profile = await signInAccount(`Fan ${suffix}`);
+      setUserProfile(profile);
+      setAccountNameDraft(profile.displayName || profile.memberId);
+      await refreshProfile();
+      setRoomState(`${profile.displayName} signed in`);
     } catch (error) {
       setRoomState(error.payload?.error || error.message);
     }
@@ -606,9 +650,18 @@ function App() {
           <div className="profile-strip">
             <div>
               <User size={18} />
-              <span>{userProfile.displayName || userProfile.memberId}</span>
+              <input
+                value={accountNameDraft}
+                onChange={(event) => setAccountNameDraft(event.target.value)}
+                onBlur={handleSaveAccount}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") handleSaveAccount();
+                }}
+                aria-label="Account display name"
+              />
               <small>{userProfile.memberId}</small>
             </div>
+            <button onClick={handleSwitchAccount}><User size={16} /> Switch account</button>
             <button onClick={copyInvite}><Copy size={16} /> Copy invite link</button>
           </div>
           <div className="room-chips">

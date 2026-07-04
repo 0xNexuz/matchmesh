@@ -5,8 +5,12 @@ const fallbackStatus = {
 };
 
 async function request(path, options) {
+  const token = getSessionToken();
   const response = await fetch(path, {
-    headers: { "content-type": "application/json" },
+    headers: {
+      "content-type": "application/json",
+      ...(token ? { authorization: `Bearer ${token}` } : {})
+    },
     ...options
   });
   const payload = await response.json();
@@ -18,12 +22,50 @@ async function request(path, options) {
   return payload;
 }
 
+export function getSessionToken() {
+  if (typeof window === "undefined") return "";
+  return window.localStorage.getItem("matchmesh-session-token") || "";
+}
+
+function saveAuth(token, profile) {
+  if (typeof window === "undefined") return;
+  if (token) window.localStorage.setItem("matchmesh-session-token", token);
+  if (profile) {
+    window.localStorage.setItem("matchmesh-profile", JSON.stringify(profile));
+    window.localStorage.setItem("matchmesh-member-id", profile.memberId);
+  }
+}
+
+export async function signInAccount(displayName) {
+  const result = await request("/api/auth/session", {
+    method: "POST",
+    body: JSON.stringify({ displayName })
+  });
+  saveAuth(result.token, result.profile);
+  return result.profile;
+}
+
+export async function restoreAccount() {
+  const result = await request("/api/auth/session");
+  saveAuth("", result.profile);
+  return result.profile;
+}
+
+export async function signOutAccount() {
+  await request("/api/auth/session", { method: "DELETE" }).catch(() => {});
+  window.localStorage.removeItem("matchmesh-session-token");
+  window.localStorage.removeItem("matchmesh-profile");
+  window.localStorage.removeItem("matchmesh-member-id");
+}
+
 export function getMemberId() {
   if (typeof window === "undefined") return "local-fan";
-  const override = new URLSearchParams(window.location.search).get("member");
-  if (override) {
-    window.localStorage.setItem("matchmesh-member-id", override);
-    return override;
+  const profile = window.localStorage.getItem("matchmesh-profile");
+  if (profile) {
+    try {
+      const parsed = JSON.parse(profile);
+      if (parsed.memberId) return parsed.memberId;
+    } catch {}
   }
   const existing = window.localStorage.getItem("matchmesh-member-id");
   if (existing) return existing;
@@ -78,6 +120,9 @@ export function updateFanProfile(profile) {
   return request("/api/profile", {
     method: "PATCH",
     body: JSON.stringify({ ...profile, memberId: getMemberId() })
+  }).then((result) => {
+    saveAuth("", result);
+    return result;
   });
 }
 

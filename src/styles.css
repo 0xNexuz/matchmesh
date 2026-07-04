@@ -355,8 +355,26 @@ p {
   gap: 8px;
 }
 
-.profile-strip span {
+.profile-strip > div {
+  min-width: 0;
+  flex: 1;
+}
+
+.profile-strip input {
+  width: min(220px, 100%);
+  min-height: 38px;
+  padding: 0 10px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--ink);
   font-weight: 900;
+}
+
+.profile-strip input:hover,
+.profile-strip input:focus {
+  border-color: var(--line);
+  background: #fbf8f0;
 }
 
 .profile-strip small {

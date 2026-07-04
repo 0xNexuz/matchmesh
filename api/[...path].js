@@ -19,6 +19,7 @@ function shouldProxyToNative(pathname) {
   if (!nativeApiBase()) return false;
   return [
     "/api/wallet/",
+    "/api/auth",
     "/api/rooms",
     "/api/profile",
     "/api/leaderboard",
