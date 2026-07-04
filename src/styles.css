@@ -957,19 +957,15 @@ select {
 }
 
 .wallet-pocket {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
   min-height: 76px;
-  padding: 16px 18px;
+  padding: 0;
   border: 1px solid rgba(247, 244, 236, 0.16);
   border-radius: 14px;
   background: rgba(247, 244, 236, 0.88);
   color: #142019;
   box-shadow: 0 14px 26px rgba(0, 0, 0, 0.18);
-  cursor: pointer;
   text-align: left;
+  overflow: hidden;
   transition: transform 190ms ease, box-shadow 190ms ease, background 190ms ease, border-color 190ms ease;
 }
 
@@ -986,6 +982,57 @@ select {
 .wallet-pocket strong {
   display: block;
   margin-top: 5px;
+}
+
+.wallet-pocket-main {
+  width: 100%;
+  min-height: 76px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 18px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+}
+
+.wallet-pocket-main.editing {
+  cursor: default;
+}
+
+.wallet-pocket-main input {
+  min-height: 34px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: #142019;
+  font-weight: 900;
+}
+
+.wallet-pocket-tools {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  border-top: 1px solid rgba(18, 29, 23, 0.1);
+}
+
+.wallet-pocket-tools button {
+  min-height: 38px;
+  border: 0;
+  border-right: 1px solid rgba(18, 29, 23, 0.1);
+  background: rgba(255, 253, 247, 0.62);
+  color: #142019;
+  transition: background 180ms ease, color 180ms ease;
+}
+
+.wallet-pocket-tools button:last-child {
+  border-right: 0;
+}
+
+.wallet-pocket-tools button:hover {
+  background: rgba(24, 199, 173, 0.16);
 }
 
 .add-pocket {

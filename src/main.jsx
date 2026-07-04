@@ -13,6 +13,7 @@ import {
   Lock,
   MessageSquare,
   Network,
+  Pencil,
   Plus,
   Radio,
   Send,
@@ -20,6 +21,7 @@ import {
   Sparkles,
   Star,
   Trophy,
+  Trash2,
   User,
   Users,
   Wallet,
@@ -139,9 +141,19 @@ const defaultPockets = [
 ];
 
 function pocketIcon(id) {
-  if (id === "pool") return Users;
-  if (id === "tips") return Star;
   return CircleDollarSign;
+}
+
+function normalizeSavedPockets(savedPockets) {
+  const cleaned = (savedPockets || [])
+    .filter((pocket) => !["pool", "tips"].includes(pocket.id))
+    .map((pocket) => ({
+      ...pocket,
+      name: pocket.id === "spending" ? "Spending" : pocket.name,
+      icon: pocketIcon(pocket.id)
+    }));
+  const hasSpending = cleaned.some((pocket) => pocket.id === "spending");
+  return hasSpending ? cleaned : defaultPockets;
 }
 
 function generateLocalWallet() {
@@ -194,6 +206,7 @@ function App() {
   const [selectedPocket, setSelectedPocket] = useState("spending");
   const [transferTarget, setTransferTarget] = useState("spending");
   const [newPocketName, setNewPocketName] = useState("");
+  const [editingPocketId, setEditingPocketId] = useState("");
   const [sendAmount, setSendAmount] = useState("25.00");
   const [tipRecipient, setTipRecipient] = useState("room-top-commentator");
   const [fixturesState, setFixturesState] = useState({
@@ -232,10 +245,9 @@ function App() {
     const savedWallet = storedJson("matchmesh-wallet", null);
     const savedPockets = storedJson("matchmesh-wallet-pockets", defaultPockets.map(({ icon, ...pocket }) => pocket));
     if (savedWallet) setLocalWallet(savedWallet);
-    setWalletPockets(savedPockets.length ? savedPockets.map((pocket) => ({
-      ...pocket,
-      icon: pocketIcon(pocket.id)
-    })) : defaultPockets);
+    const normalizedPockets = normalizeSavedPockets(savedPockets);
+    setWalletPockets(normalizedPockets);
+    window.localStorage.setItem("matchmesh-wallet-pockets", JSON.stringify(normalizedPockets.map(({ icon, ...pocket }) => pocket)));
     getFixtures()
       .then(setFixturesState)
       .catch(() => {
@@ -478,6 +490,34 @@ function App() {
     setWalletState(`${name.slice(0, 28)} pocket added`);
   }
 
+  function handleRenamePocket(pocketId, name) {
+    if (pocketId === "spending") return;
+    const cleanName = name.trim().slice(0, 28);
+    if (!cleanName) return;
+    const nextPockets = walletPockets.map((pocket) => (
+      pocket.id === pocketId ? { ...pocket, name: cleanName } : pocket
+    ));
+    savePockets(nextPockets);
+    setWalletState(`${cleanName} pocket updated`);
+  }
+
+  function handleDeletePocket(pocketId) {
+    if (pocketId === "spending") return;
+    const pocket = walletPockets.find((item) => item.id === pocketId);
+    if (!pocket) return;
+    const nextPockets = walletPockets
+      .filter((item) => item.id !== pocketId)
+      .map((item) => (
+        item.id === "spending"
+          ? { ...item, balance: Number((item.balance + pocket.balance).toFixed(2)) }
+          : item
+      ));
+    savePockets(nextPockets);
+    setSelectedPocket("spending");
+    setEditingPocketId("");
+    setWalletState(`${pocket.name} removed; balance returned to Spending`);
+  }
+
   function copyInvite() {
     const url = `${window.location.origin}${window.location.pathname}?room=${roomCode}`;
     navigator.clipboard?.writeText(`${roomCode} ${url}`).catch(() => {});
@@ -490,7 +530,7 @@ function App() {
     try {
       const message = await sendChatMessage(roomCode, {
         memberId: getMemberId(),
-        name: "You",
+        name: userProfile.displayName || userProfile.memberId || getMemberId(),
         team: "ROOM",
         text,
         tag: "Live"
@@ -763,18 +803,56 @@ function App() {
 
                   {walletPockets.map((pocket) => {
                     const Icon = pocket.icon;
+                    const isBasePocket = pocket.id === "spending";
+                    const isEditing = editingPocketId === pocket.id;
                     return (
-                      <button
+                      <article
                         key={pocket.id}
                         className={`wallet-pocket ${selectedPocket === pocket.id ? "active" : ""}`}
-                        onClick={() => setSelectedPocket(pocket.id)}
                       >
-                        <div>
-                          <span>{pocket.name}</span>
-                          <strong>{pocket.balance.toFixed(2)} USDT</strong>
-                        </div>
-                        <Icon size={18} />
-                      </button>
+                        {isEditing ? (
+                          <div className="wallet-pocket-main editing">
+                            <div>
+                              <input
+                                defaultValue={pocket.name}
+                                autoFocus
+                                onBlur={(event) => {
+                                  handleRenamePocket(pocket.id, event.target.value);
+                                  setEditingPocketId("");
+                                }}
+                                onKeyDown={(event) => {
+                                  if (event.key === "Enter") {
+                                    handleRenamePocket(pocket.id, event.currentTarget.value);
+                                    setEditingPocketId("");
+                                  }
+                                  if (event.key === "Escape") setEditingPocketId("");
+                                }}
+                                aria-label="Pocket name"
+                              />
+                              <strong>{pocket.balance.toFixed(2)} USDT</strong>
+                            </div>
+                            <Icon size={18} />
+                          </div>
+                        ) : (
+                          <button className="wallet-pocket-main" onClick={() => setSelectedPocket(pocket.id)}>
+                            <div>
+                              <span>{pocket.name}</span>
+                              <strong>{pocket.balance.toFixed(2)} USDT</strong>
+                            </div>
+                            <Icon size={18} />
+                          </button>
+                        )}
+                        {!isBasePocket && (
+                          <div className="wallet-pocket-tools">
+                            <button onClick={() => setEditingPocketId(pocket.id)} aria-label={`Edit ${pocket.name}`}>
+                              <Pencil size={15} />
+                            </button>
+                            <button onClick={() => handleDeletePocket(pocket.id)} aria-label={`Remove ${pocket.name}`}>
+                              <Trash2 size={15} />
+                            </button>
+                          </div>
+                        )}
+                      </article>
                     );
                   })}
                   <div className="add-pocket">
